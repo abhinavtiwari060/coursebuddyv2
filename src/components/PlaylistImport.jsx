@@ -38,7 +38,7 @@ async function fetchPlaylistVideosWithTime(playlistId) {
   const plRes = await fetch(playlistUrl);
   if (!plRes.ok) throw new Error('Failed to fetch playlist or playlist is private.');
   const plData = await plRes.json();
-  
+
   if (!plData.items || plData.items.length === 0) {
     throw new Error('No videos found in this playlist.');
   }
@@ -72,14 +72,14 @@ async function fetchPlaylistVideosWithTime(playlistId) {
 
 // ── component ─────────────────────────────────────────────────────────────────
 export default function PlaylistImport({ courses, onAddVideo }) {
-  const [url, setUrl]           = useState('');
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState('');
-  const [videos, setVideos]     = useState([]);
-  const [course, setCourse]     = useState('');
+  const [url, setUrl] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [videos, setVideos] = useState([]);
+  const [course, setCourse] = useState('');
   const [importing, setImporting] = useState(new Set());
-  const [imported, setImported]   = useState(new Set());
-  const [expanded, setExpanded]   = useState(true);
+  const [imported, setImported] = useState(new Set());
+  const [expanded, setExpanded] = useState(true);
 
   const handleFetch = async () => {
     setError('');
@@ -134,7 +134,7 @@ export default function PlaylistImport({ courses, onAddVideo }) {
   return (
     <div className="glass-card rounded-3xl overflow-hidden relative">
       <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 dark:bg-indigo-500/5 rounded-bl-full pointer-events-none" />
-      
+
       {/* Header */}
       <button
         onClick={() => setExpanded(e => !e)}
@@ -152,7 +152,7 @@ export default function PlaylistImport({ courses, onAddVideo }) {
           <p className="text-xs text-slate-500 dark:text-slate-400 tracking-wide font-medium relative z-10 -mt-2">
             Paste a YouTube playlist link to auto-fetch videos + duration.
           </p>
-          
+
           {/* URL input row */}
           <div className="flex flex-col sm:flex-row gap-2 relative z-10">
             <input
@@ -218,11 +218,10 @@ export default function PlaylistImport({ courses, onAddVideo }) {
                   return (
                     <div
                       key={vid.videoId}
-                      className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
-                        done
+                      className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${done
                           ? 'border-green-200 bg-green-50/50 dark:bg-green-900/10 dark:border-green-800/40'
                           : 'border-slate-100 dark:border-slate-700/50 bg-white/50 dark:bg-slate-800/30 hover:bg-white dark:hover:bg-slate-800'
-                      }`}
+                        }`}
                     >
                       {/* Thumbnail & duration overlay */}
                       <a href={vid.link} target="_blank" rel="noreferrer" className="relative w-20 h-12 rounded-lg overflow-hidden flex-shrink-0 bg-slate-200 dark:bg-slate-700 group block">
