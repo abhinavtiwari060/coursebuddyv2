@@ -6,6 +6,8 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import AdminDashboard from './pages/AdminDashboard';
+import Profile from './pages/Profile';
+import Leaderboard from './pages/Leaderboard';
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
@@ -37,6 +39,22 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Home />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/profile" 
+            element={
+              <ProtectedRoute>
+                <Profile />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/leaderboard" 
+            element={
+              <ProtectedRoute>
+                <Leaderboard />
               </ProtectedRoute>
             } 
           />

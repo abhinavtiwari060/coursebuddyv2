@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -20,9 +20,9 @@ import DataTools from '../components/DataTools';
 
 import api, { videoService, courseService, streakService } from '../api/api';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 
-import { Lightbulb, GripVertical, LayoutDashboard, Video, BarChart2, BookOpen, LogOut, Settings } from 'lucide-react';
+import { Lightbulb, GripVertical, LayoutDashboard, Video, BarChart2, BookOpen, Settings, Trophy, User } from 'lucide-react';
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
@@ -33,13 +33,12 @@ const TABS = [
 ];
 
 export default function Home() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
-  // API State
   const [courses, setCourses] = useState([]);
   const [videos, setVideos] = useState([]);
-  const [streak, setStreak] = useState({ count: 0, lastDate: null }); // Hardcoded streak for now or derived from DB
+  const [streak, setStreak] = useState({ count: 0, lastDate: null });
   const [goalTarget, setGoalTarget] = useState(3);
   
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -58,6 +57,7 @@ export default function Home() {
           courseService.getAll(),
           streakService.get()
         ]);
+        // Videos already come sorted by order from backend
         setVideos(vids);
         setCourses(crs.map(c => ({ id: c._id, name: c.name })));
         
@@ -76,7 +76,6 @@ export default function Home() {
     setRandomSuggestion(pending.length > 0 ? pending[Math.floor(Math.random() * pending.length)] : null);
   }, [videos]);
 
-  // Handlers mappings to API
   const handleAddCourse = async (c) => {
     try {
       const data = await courseService.create(c.name);
@@ -98,9 +97,10 @@ export default function Home() {
         duration: v.duration,
         course: v.course,
         tag: v.tag,
-        thumbnail: v.thumbnail
+        thumbnail: v.thumbnail,
+        order: v.order,
       });
-      setVideos(prev => [data, ...prev]);
+      setVideos(prev => [...prev, data]);
     } catch (err) {
       console.error(err);
     }
@@ -144,6 +144,7 @@ export default function Home() {
   const handleDeleteVideo = async (id) => {
     if (!window.confirm('Are you sure you want to delete this video?')) return;
     const target = videos.find(v => v._id === id || v.id === id);
+    if (!target) return;
     const dbId = target._id || target.id;
     try {
       await videoService.delete(dbId);
@@ -153,20 +154,34 @@ export default function Home() {
     }
   };
 
-  const handleDragEnd = (result) => {
-    // Local reorder only for instant UX feeling, saving array order to DB is complex for a single step
+  const handleDragEnd = async (result) => {
     if (!result.destination) return;
     const displayed = getFiltered();
-    const moved = displayed[result.source.index];
-    const target = displayed[result.destination.index];
-    if (!moved || !target) return;
-    setVideos(prev => {
-      const idxA = prev.findIndex(v => v._id === moved._id);
-      const idxB = prev.findIndex(v => v._id === target._id);
-      const next = [...prev];
-      [next[idxA], next[idxB]] = [next[idxB], next[idxA]];
-      return next;
-    });
+    if (result.source.index === result.destination.index) return;
+
+    const reordered = Array.from(displayed);
+    const [moved] = reordered.splice(result.source.index, 1);
+    reordered.splice(result.destination.index, 0, moved);
+
+    // Update order in state immediately (optimistic UI)
+    const idToOrder = reordered.reduce((acc, v, idx) => {
+      acc[v._id || v.id] = idx + 1;
+      return acc;
+    }, {});
+
+    setVideos(prev => prev.map(v => {
+      const vid = v._id || v.id;
+      return idToOrder[vid] !== undefined ? { ...v, order: idToOrder[vid] } : v;
+    }).sort((a, b) => (a.order || 0) - (b.order || 0)));
+
+    // Persist to backend
+    try {
+      await videoService.reorder(
+        reordered.map((v, idx) => ({ id: v._id || v.id, order: idx + 1 }))
+      );
+    } catch (err) {
+      console.error('Failed to save order:', err);
+    }
   };
 
   const getFiltered = () =>
@@ -182,18 +197,30 @@ export default function Home() {
                        || (filters.status === 'Pending' && !v.completed);
       const matchPlatform = filters.platform === 'All' || v.platform === filters.platform;
       return matchSearch && matchCourse && matchStatus && matchPlatform;
-    }).sort((a, b) => Number(b.completed) - Number(a.completed));
+    }).sort((a, b) => {
+      // Sort by order field (sequence), then completed last
+      if (filters.status === 'All') {
+        if (a.completed !== b.completed) return Number(a.completed) - Number(b.completed);
+      }
+      return (a.order || 0) - (b.order || 0);
+    });
 
   const filteredVideos = getFiltered();
   const completedVideos = videos.filter(v => v.completed);
 
+  // Build sequence map per course (for numbering)
+  const courseSequenceMap = {};
+  videos
+    .filter(v => !v.completed)
+    .sort((a, b) => (a.order || 0) - (b.order || 0))
+    .forEach(v => {
+      if (!courseSequenceMap[v.course]) courseSequenceMap[v.course] = 0;
+      courseSequenceMap[v.course]++;
+      v._seqNum = courseSequenceMap[v.course];
+    });
+
   return (
     <div className="min-h-screen flex flex-col font-sans relative">
-      {/* Small top right Logout for User */}
-      <button onClick={logout} className="absolute top-4 right-20 z-50 px-3 py-1.5 flex items-center gap-1 bg-red-50 text-red-500 rounded-lg text-xs font-bold hover:bg-red-500 hover:text-white transition shadow-sm border border-red-100">
-        <LogOut size={12}/> EXIT
-      </button>
-
       <Navbar />
 
       <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-orange-200/60 dark:border-slate-800 sticky top-[65px] z-10">
@@ -203,6 +230,12 @@ export default function Home() {
               {tab.icon}{tab.label}
             </button>
           ))}
+          <Link to="/leaderboard" className="flex items-center gap-2 px-5 py-3.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 whitespace-nowrap transition-all">
+            <Trophy size={18} /> Leaderboard
+          </Link>
+          <Link to="/profile" className="flex items-center gap-2 px-5 py-3.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-orange-600 dark:hover:text-orange-400 whitespace-nowrap transition-all">
+            <User size={18} /> Profile
+          </Link>
         </div>
       </div>
 
@@ -252,11 +285,17 @@ export default function Home() {
                                 <div {...prov.dragHandleProps} className="absolute top-3 right-3 cursor-grab text-slate-300 dark:text-slate-600 hover:text-orange-400 z-10 p-2" title="Drag to reorder">
                                   <GripVertical size={18} />
                                 </div>
-                                <VideoCard video={video} onToggleComplete={handleToggleComplete} onUpdateNotes={handleUpdateNotes} onDelete={handleDeleteVideo} />
+                                <VideoCard
+                                  video={video}
+                                  onToggleComplete={handleToggleComplete}
+                                  onUpdateNotes={handleUpdateNotes}
+                                  onDelete={handleDeleteVideo}
+                                  sequenceNumber={!video.completed ? video._seqNum : undefined}
+                                />
                               </div>
                             )}
                           </Draggable>
-                        )
+                        );
                       })}
                       {provided.placeholder}
                       {filteredVideos.length === 0 && (
@@ -302,14 +341,31 @@ export default function Home() {
         )}
 
         {activeTab === 'settings' && (
-           <div className="max-w-2xl mx-auto">
+           <div className="max-w-2xl mx-auto space-y-6">
              <DataTools videos={videos} courses={courses} setVideos={setVideos} setCourses={setCourses} />
              <div className="glass-card p-6 rounded-2xl bg-orange-50/50 dark:bg-slate-900/50 border border-orange-200 dark:border-slate-800">
-               <h3 className="text-lg font-bold mb-2 dark:text-white">Account Info</h3>
-               <div className="space-y-2">
-                 <p className="text-sm dark:text-slate-300">Logged in as: <span className="font-bold text-orange-500">{user?.name}</span></p>
-                 <p className="text-sm dark:text-slate-300">Email: <span className="font-bold">{user?.email}</span></p>
-                 <p className="text-sm dark:text-slate-300">Account Type: <span className="badge bg-indigo-100 text-indigo-700 dark:bg-slate-800 dark:text-indigo-400 capitalize">{user?.role}</span></p>
+               <h3 className="text-lg font-bold mb-4 dark:text-white">Account Info</h3>
+               <div className="space-y-3">
+                 <div className="flex items-center justify-between p-3 bg-white/60 dark:bg-slate-800/60 rounded-xl">
+                   <span className="text-sm text-slate-500">Logged in as</span>
+                   <span className="font-bold text-orange-500">{user?.name}</span>
+                 </div>
+                 <div className="flex items-center justify-between p-3 bg-white/60 dark:bg-slate-800/60 rounded-xl">
+                   <span className="text-sm text-slate-500">Email</span>
+                   <span className="font-bold dark:text-white text-sm">{user?.email}</span>
+                 </div>
+                 <div className="flex items-center justify-between p-3 bg-white/60 dark:bg-slate-800/60 rounded-xl">
+                   <span className="text-sm text-slate-500">Account Type</span>
+                   <span className="badge bg-indigo-100 text-indigo-700 dark:bg-slate-800 dark:text-indigo-400 capitalize">{user?.role}</span>
+                 </div>
+               </div>
+               <div className="mt-4 flex gap-3">
+                 <Link to="/profile" className="flex-1 text-center py-2.5 btn-primary rounded-xl text-sm font-bold">
+                   Edit Profile
+                 </Link>
+                 <Link to="/leaderboard" className="flex-1 text-center py-2.5 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl text-sm font-bold hover:bg-indigo-200 dark:hover:bg-indigo-800/30 transition">
+                   Leaderboard
+                 </Link>
                </div>
              </div>
            </div>

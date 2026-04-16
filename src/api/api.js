@@ -1,6 +1,6 @@
 import axios from "axios";
 
-// Base URL (no /api here)
+// Base URL
 const API_URL =
   import.meta.env.VITE_API_URL || "https://coursebuddyv2.onrender.com";
 
@@ -28,7 +28,6 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem("studyflow_token");
       localStorage.removeItem("studyflow_user");
-
       if (window.location.pathname !== "/login") {
         window.location.href = "/login";
       }
@@ -44,6 +43,12 @@ export const authService = {
 
   login: (email, password) =>
     api.post("/api/auth/login", { email, password }).then((r) => r.data),
+};
+
+// ── Profile Service ──────────────────────
+export const profileService = {
+  get: () => api.get("/api/profile").then((r) => r.data),
+  update: (data) => api.put("/api/profile", data).then((r) => r.data),
 };
 
 // ── Video Service ────────────────────────
@@ -77,6 +82,9 @@ export const videoService = {
 
   saveNotes: (id, notes) =>
     api.put(`/api/videos/${id}`, { notes }).then((r) => r.data),
+
+  reorder: (orders) =>
+    api.put("/api/videos/reorder", { orders }).then((r) => r.data),
 };
 
 // ── Course Service ───────────────────────
@@ -98,6 +106,16 @@ export const streakService = {
     api.post("/api/streak/update").then((r) => r.data),
 };
 
+// ── Leaderboard Service ──────────────────
+export const leaderboardService = {
+  get: () => api.get("/api/leaderboard").then((r) => r.data),
+};
+
+// ── Bug Report Service ───────────────────
+export const bugReportService = {
+  submit: (data) => api.post("/api/bug-report", data).then((r) => r.data),
+};
+
 // ── Admin Service ────────────────────────
 export const adminService = {
   getUsers: () => api.get("/api/admin/users").then((r) => r.data),
@@ -110,7 +128,10 @@ export const adminService = {
 
   toggleBlock: (id) =>
     api.put(`/api/admin/users/${id}/block`).then((r) => r.data),
+
+  getLeaderboard: () =>
+    api.get("/api/admin/leaderboard").then((r) => r.data),
 };
 
-// ✅ ONLY ONE default export
+// Default export
 export default api;
