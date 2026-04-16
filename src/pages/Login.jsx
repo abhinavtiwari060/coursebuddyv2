@@ -99,7 +99,8 @@ export default function Login() {
                 if (user.role === 'admin') navigate('/admin');
                 else navigate('/dashboard');
               } catch (err) {
-                setError('Google Login failed');
+                console.error(err);
+                setError('Google Login failed: ' + (err.response?.data?.error || err.message));
                 setLoading(false);
               }
             }}
