@@ -14,12 +14,24 @@ import Streak from './models/Streak.js';
 import Discussion from './models/Discussion.js';
 import admin from 'firebase-admin';
 
-// Try initializing Firebase Admin (requires service account credentials in environment variable GOOGLE_APPLICATION_CREDENTIALS or passed manually)
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Initialize Firebase Admin
 try {
-  admin.initializeApp();
+  const serviceAccount = JSON.parse(fs.readFileSync(path.join(__dirname, 'config', 'serviceAccountKey.json'), 'utf8'));
+  if (!admin.apps.length) {
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    });
+  }
   console.log("🔥 Firebase Admin Initialized");
 } catch (err) {
-  console.log("Firebase Admin not configured yet.");
+  console.log("Firebase Admin not configured yet.", err.message);
 }
 
 dotenv.config();
@@ -596,62 +608,3 @@ mongoose.connect(process.env.MONGO_URI, { family: 4 })
     });
   })
   .catch(err => console.log("❌ DB Error:", err));
-
-// Fire base admin initialize
-import admin from "firebase-admin";
-import serviceAccount from "./config/serviceAccountKey.json" assert { type: "json" };
-
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
-
-// notificaton
-const users = await User.find({ fcmToken: { $ne: null } });
-
-const tokens = users.map(user => user.fcmToken);
-
-
-// push notification Api 
-app.post("/api/admin/push", async (req, res) => {
-  const { title, body } = req.body;
-
-  try {
-    const users = await User.find({ fcmToken: { $ne: null } });
-    const tokens = users.map(u => u.fcmToken);
-
-    const message = {
-      notification: { title, body },
-      tokens: tokens,
-    };
-
-    const response = await admin.messaging().sendEachForMulticast(message);
-
-    res.json({
-      success: true,
-      sent: response.successCount,
-      failed: response.failureCount
-    });
-
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Notification failed" });
-  }
-});
-
-
-// for spacific user notification
-const user = await User.findById(userId);
-
-await admin.messaging().send({
-  notification: {
-    title: "Personal Message",
-    body: "Hello Abhi bhai 🚀"
-  },
-  token: user.fcmToken
-});
-// expire tocken
-response.responses.forEach((resp, idx) => {
-  if (!resp.success) {
-    console.log("Invalid token:", tokens[idx]);
-  }
-});
