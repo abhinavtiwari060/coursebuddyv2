@@ -24,15 +24,31 @@ const __dirname = path.dirname(__filename);
 
 // Initialize Firebase Admin
 try {
-  const serviceAccount = JSON.parse(fs.readFileSync(path.join(__dirname, 'config', 'serviceAccountKey.json'), 'utf8'));
-  if (!admin.apps.length) {
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount)
-    });
+  // 1. Check for remote/production env variables first (e.g. Render)
+  if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+    if (!admin.apps.length) {
+      admin.initializeApp({
+        credential: admin.credential.cert({
+          projectId: process.env.FIREBASE_PROJECT_ID,
+          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+          // Handle stringified newlines in environment variables safely
+          privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+        })
+      });
+    }
+    console.log("🔥 Firebase Admin Initialized (via Environment Variables)");
+  // 2. Fall back to local file if it exists
+  } else {
+    const serviceAccount = JSON.parse(fs.readFileSync(path.join(__dirname, 'config', 'serviceAccountKey.json'), 'utf8'));
+    if (!admin.apps.length) {
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+    }
+    console.log("🔥 Firebase Admin Initialized (via local file)");
   }
-  console.log("🔥 Firebase Admin Initialized");
 } catch (err) {
-  console.log("Firebase Admin not configured yet.", err.message);
+  console.log("Firebase Admin not configured correctly:", err.message);
 }
 
 dotenv.config();
