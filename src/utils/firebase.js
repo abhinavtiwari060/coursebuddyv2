@@ -1,8 +1,11 @@
-import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
-import { getMessaging, getToken, onMessage } from "firebase/messaging";
 
-// 🔥 Firebase Config (same rahega)
+
+// new correct code
+import { initializeApp, getApps } from "firebase/app";
+import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
+
+// 🔥 Firebase Config
 const firebaseConfig = {
   apiKey: "AIzaSyDgqW-qu4H1hqTu2OcRoD_BaHjWmC25gsY",
   authDomain: "coursebuddy-8ff70.firebaseapp.com",
@@ -13,16 +16,31 @@ const firebaseConfig = {
   measurementId: "G-G6MZMXZYNX"
 };
 
-// 🔥 Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// ✅ SAFE INIT (important)
+const app = getApps().length === 0
+  ? initializeApp(firebaseConfig)
+  : getApps()[0];
 
 // 🔐 Auth
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 export const signInWithGoogle = () => signInWithPopup(auth, googleProvider);
 
-// 🔔 Messaging
-export const messaging = getMessaging(app);
+// 🔔 Messaging (lazy init)
+let messaging = null;
+
+const initMessaging = async () => {
+  if (messaging) return messaging;
+
+  const supported = await isSupported();
+  if (!supported) {
+    console.log("❌ Messaging not supported");
+    return null;
+  }
+
+  messaging = getMessaging(app);
+  return messaging;
+};
 
 // 🚀 TOKEN GENERATE FUNCTION
 export const requestForToken = async () => {
@@ -35,7 +53,7 @@ export const requestForToken = async () => {
       return null;
     }
 
-    // ✅ Step 2: Service Worker register (safe way)
+    // ✅ Step 2: Service Worker
     let registration;
 
     if ("serviceWorker" in navigator) {
@@ -50,8 +68,12 @@ export const requestForToken = async () => {
       console.log("✅ Service Worker Ready:", registration.scope);
     }
 
-    // ✅ Step 3: Get Token (🔥 MAIN PART)
-    const currentToken = await getToken(messaging, {
+    // ✅ Step 3: Init messaging
+    const msg = await initMessaging();
+    if (!msg) return null;
+
+    // ✅ Step 4: Get Token
+    const currentToken = await getToken(msg, {
       vapidKey: "BDdb3-Hu3HaoQvfms_Jcx1r2Wm_Gv5HexHz9mI4BZnHhOHSVckJ33AqUm1hPqIsrxnXMTwS80XxRgh2MlI6cb4M",
       serviceWorkerRegistration: registration,
     });
@@ -71,8 +93,11 @@ export const requestForToken = async () => {
 
 // 🔔 Foreground Notification Listener
 export const onMessageListener = () =>
-  new Promise((resolve) => {
-    onMessage(messaging, (payload) => {
+  new Promise(async (resolve) => {
+    const msg = await initMessaging();
+    if (!msg) return;
+
+    onMessage(msg, (payload) => {
       console.log("📩 Foreground Message:", payload);
       resolve(payload);
     });
