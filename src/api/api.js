@@ -1,18 +1,22 @@
-import axios from 'axios';
+import axios from "axios";
 
-// ── Axios instance ────────────────────────────────────────────────────────────
-const getBaseURL = () => {
-  let url = import.meta.env.VITE_API_URL || 'https://coursebuddyv2.onrender.com';
-  // If the user forgot to add /api at the end in production, auto-append it
-  if (!url.endsWith('/api') && !url.endsWith('/api/')) {
-    url = url.endsWith('/') ? `${url}api` : `${url}/api`;
-  }
-  return url;
-};
+const API_URL =
+  import.meta.env.VITE_API_URL || "https://coursebuddyv2.onrender.com";
 
 const api = axios.create({
-  baseURL: getBaseURL(),
+  baseURL: API_URL,
 });
+
+// Attach token
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("studyflow_token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+export default api;
 
 // Attach JWT from localStorage to every request automatically
 api.interceptors.request.use(
