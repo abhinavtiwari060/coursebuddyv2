@@ -20,6 +20,11 @@ app.use(cors({
   credentials: true
 }));
 
+// Root Route
+app.get('/', (req, res) => {
+  res.send('API is running successfully 🚀');
+});
+
 // ── Database Connection ───────────────────────────────────────
 mongoose.set('bufferCommands', false); // Disable global buffering
 
