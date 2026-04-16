@@ -558,7 +558,25 @@ app.post('/api/admin/push', authMiddleware, adminMiddleware, async (req, res) =>
     };
 
     const response = await admin.messaging().sendEachForMulticast(message);
-    res.json({ message: `Push sent successfully. Success: ${response.successCount}, Failed: ${response.failureCount}` });
+    
+    // Automatically clean up old/invalid tokens from the database!
+    if (response.failureCount > 0) {
+      const failedTokens = [];
+      response.responses.forEach((resp, idx) => {
+        if (!resp.success) {
+          failedTokens.push(tokens[idx]);
+        }
+      });
+      // Delete bad tokens blindly from all users
+      if (failedTokens.length > 0) {
+        await User.updateMany(
+          { fcmToken: { $in: failedTokens } },
+          { $set: { fcmToken: null } }
+        );
+      }
+    }
+
+    res.json({ message: `Push sent! ✅ Delivered to ${response.successCount} users. (Cleaned up ${response.failureCount} old/inactive devices)` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
