@@ -2,8 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
+    <link rel="apple-touch-icon" href="/icon-192.svg">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#000000" />
     <meta name="description" content="Course Buddy – your smart study tracker. Track videos, streaks, goals and more." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -11,7 +13,31 @@
     <title>Course Buddy</title>
   </head>
   <body>
+    <!-- Splash Screen -->
+    <div id="splash-screen" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background-color:#0f172a;display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:9999;transition:opacity 0.5s ease;">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="100" height="100" style="margin-bottom:20px; animation: pulse 2s infinite;">
+        <rect width="192" height="192" rx="40" fill="#f97316"/>
+        <path d="M96 48l36 60H60z" fill="#ffffff"/>
+        <path d="M60 120h72v24H60z" fill="#ffffff" opacity="0.8"/>
+      </svg>
+      <h1 style="color:white;font-family:'Outfit', sans-serif;margin:0;font-size:24px;letter-spacing:1px;">Course Buddy</h1>
+      <p style="color:#e2e8f0;font-family:'Inter', sans-serif;font-size:14px;opacity:0.7;margin-top:8px;">Loading resources...</p>
+    </div>
+    <style>@keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }</style>
+
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+    <script>
+      // Hide Splash screen strictly after React begins rendering
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          const splash = document.getElementById('splash-screen');
+          if (splash) {
+            splash.style.opacity = '0';
+            setTimeout(() => splash.remove(), 500);
+          }
+        }, 800); // give it a tiny buffer to feel professional
+      });
+    </script>
   </body>
 </html>

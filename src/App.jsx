@@ -2,7 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { settingsService } from './api/api';
-import { Download } from 'lucide-react';
+import { Download, WifiOff } from 'lucide-react';
 
 // Pages
 import Home from './pages/Home';
@@ -25,8 +25,16 @@ const ProtectedRoute = ({ children }) => {
 
 export default function App() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
   useEffect(() => {
+    // Listen for network status
+    const handleOffline = () => setIsOffline(true);
+    const handleOnline = () => setIsOffline(false);
+    
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+
     // 1. Listen for PWA installation prompt
     const handleBeforeInstallPrompt = (e) => {
       e.preventDefault();
@@ -54,6 +62,8 @@ export default function App() {
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
       clearInterval(interval);
     };
   }, []);
@@ -67,10 +77,16 @@ export default function App() {
 
   return (
     <>
+      {isOffline && (
+        <div className="fixed top-0 left-0 w-full z-[100] bg-red-500 text-white py-2 text-center text-sm font-bold flex justify-center items-center gap-2 shadow-md animate-fade-in">
+          <WifiOff size={16} /> You are currently offline. Some features may be unavailable.
+        </div>
+      )}
+
       {deferredPrompt && (
         <button
           onClick={handleInstallPWA}
-          className="fixed bottom-6 right-6 z-50 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-5 py-3 rounded-full shadow-2xl flex items-center gap-2 font-bold transition-transform hover:scale-105 active:scale-95"
+          className="fixed bottom-6 right-6 z-50 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-5 py-3 rounded-full shadow-2xl flex items-center gap-2 font-bold transition-transform hover:scale-105 active:scale-95"
         >
           <Download size={20} />
           Install App
