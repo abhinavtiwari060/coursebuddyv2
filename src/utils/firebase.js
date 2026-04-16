@@ -20,18 +20,34 @@ export const messaging = getMessaging(app);
 
 export const requestForToken = async () => {
   try {
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      console.log('Permission not granted for Notification');
+      return null;
+    }
+
+    let registration = null;
+    if ('serviceWorker' in navigator) {
+      registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+        scope: '/'
+      });
+      console.log('Firebase Service Worker registered successfully with scope:', registration.scope);
+    }
+
     const currentToken = await getToken(messaging, { 
-      vapidKey: 'BDdb3-Hu3HaoQvfms_Jcx1r2Wm_Gv5HexHz9ml4BZnHhOHSVckJ33AqUm1hPqlsrxnXMTwS80XxRgh2MlI6cb4M' 
+      vapidKey: 'BDdb3-Hu3HaoQvfms_Jcx1r2Wm_Gv5HexHz9ml4BZnHhOHSVckJ33AqUm1hPqlsrxnXMTwS80XxRgh2MlI6cb4M',
+      serviceWorkerRegistration: registration 
     });
+
     if (currentToken) {
-      console.log('Target FCM Token:', currentToken);
+      // console.log('Target FCM Token:', currentToken);
       return currentToken;
     } else {
       console.log('No registration token available. Request permission to generate one.');
       return null;
     }
   } catch (err) {
-    console.log('An error occurred while retrieving token. ', err);
+    console.error('An error occurred while retrieving token: ', err);
     return null;
   }
 };
