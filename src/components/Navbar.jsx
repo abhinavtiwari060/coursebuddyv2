@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import ThemeToggle from './ThemeToggle';
 import BugReport from './BugReport';
-import { BookOpen, Zap, Trophy, User, Bug, ChevronDown, LogOut } from 'lucide-react';
+import { BookOpen, Zap, Trophy, User, Bug, ChevronDown, LogOut, MessageSquare } from 'lucide-react';
 
 function getInitials(name = '') {
   return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
@@ -91,6 +91,13 @@ export default function Navbar() {
                       className="flex items-center gap-2 px-4 py-3 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
                     >
                       <Trophy size={15} /> Leaderboard
+                    </Link>
+                    <Link
+                      to="/community"
+                      onClick={() => setShowMenu(false)}
+                      className="flex items-center gap-2 px-4 py-3 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+                    >
+                      <MessageSquare size={15} /> Community
                     </Link>
                     <button
                       onClick={() => { setShowMenu(false); setShowBugReport(true); }}

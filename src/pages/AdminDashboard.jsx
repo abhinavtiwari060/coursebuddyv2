@@ -6,7 +6,7 @@ import { formatDuration } from '../utils/helpers';
 import {
   Users, Trash2, Clock, PlayCircle, LogOut, ShieldAlert, X, BookOpen,
   CheckCircle2, Trophy, Medal, Crown, BarChart2, Activity, Eye,
-  Search, Filter, ChevronDown, TrendingUp, Flame, AlertTriangle
+  Search, Filter, ChevronDown, TrendingUp, Flame, AlertTriangle, Send, Palette
 } from 'lucide-react';
 
 function getInitials(name = '') {
@@ -16,6 +16,7 @@ function getInitials(name = '') {
 const TABS = [
   { id: 'users', label: 'Users', icon: <Users size={16} /> },
   { id: 'leaderboard', label: 'Leaderboard', icon: <Trophy size={16} /> },
+  { id: 'notifications', label: 'Push & Theme', icon: <Send size={16} /> },
 ];
 
 export default function AdminDashboard() {
@@ -30,6 +31,47 @@ export default function AdminDashboard() {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [loadingDetails, setLoadingDetails] = useState(false);
+
+  // Push notification state
+  const [pushTitle, setPushTitle] = useState('');
+  const [pushBody, setPushBody] = useState('');
+  const [pushSending, setPushSending] = useState(false);
+
+  // Theme state
+  const [isLavender, setIsLavender] = useState(false);
+
+  useEffect(() => {
+    // Check if lavender theme is active
+    setIsLavender(document.documentElement.classList.contains('theme-lavender'));
+  }, []);
+
+  const toggleLavenderTheme = () => {
+    if (isLavender) {
+      document.documentElement.classList.remove('theme-lavender');
+      localStorage.removeItem('cb_theme_lavender');
+    } else {
+      document.documentElement.classList.add('theme-lavender');
+      localStorage.setItem('cb_theme_lavender', 'true');
+    }
+    setIsLavender(!isLavender);
+  };
+
+  const handleSendPush = async () => {
+    if (!pushTitle || !pushBody) return alert("Title and Body required.");
+    const recipientIds = selectedUser ? [selectedUser._id] : [];
+    
+    setPushSending(true);
+    try {
+      const res = await adminService.sendPush({ title: pushTitle, body: pushBody, userIds: recipientIds });
+      alert(res.message);
+      setPushTitle('');
+      setPushBody('');
+    } catch (err) {
+      alert(err.response?.data?.error || "Push failed");
+    } finally {
+      setPushSending(false);
+    }
+  };
 
   useEffect(() => {
     if (!user || user.role !== 'admin') {
@@ -477,6 +519,80 @@ export default function AdminDashboard() {
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+
+        {/* Push & Theme Tab */}
+        {activeTab === 'notifications' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            {/* Theme Changer */}
+            <div className="glass-card rounded-2xl p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-purple-100 text-purple-600 rounded-xl">
+                  <Palette size={20} />
+                </div>
+                <h2 className="text-xl font-black dark:text-white">Theme & Styling</h2>
+              </div>
+              <p className="text-sm text-slate-500 mb-6">Switch the entire application color schema dynamically. Users will see the default, but this sets your personal admin session theme!</p>
+              
+              <button
+                onClick={toggleLavenderTheme}
+                className={`w-full py-4 rounded-2xl font-bold flex flex-col items-center justify-center gap-2 border-2 transition ${isLavender ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300'}`}
+              >
+                <div className="flex gap-2">
+                  <span className="w-6 h-6 rounded-full bg-[#f97316] shadow"></span>
+                  <span className="w-6 h-6 rounded-full bg-[#8b5cf6] shadow"></span>
+                </div>
+                {isLavender ? 'Lavender Theme Active ✨' : 'Switch to Lavender ✨'}
+              </button>
+            </div>
+
+            {/* Push Notifications Setup */}
+            <div className="glass-card rounded-2xl p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-blue-100 text-blue-600 rounded-xl">
+                  <Send size={20} />
+                </div>
+                <h2 className="text-xl font-black dark:text-white">Send Push Notification</h2>
+              </div>
+              <p className="text-sm text-slate-500 mb-6">Send an FCM notification to all active devices or select a user from the 'Users' tab first.</p>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Send To</label>
+                  <p className="text-sm font-bold bg-slate-100 dark:bg-slate-800 px-3 py-2 rounded-xl dark:text-white">
+                    {selectedUser ? `Target: ${selectedUser.name}` : 'Broadcast to ALL USERS'}
+                  </p>
+                </div>
+                <div>
+                   <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Title</label>
+                   <input 
+                     value={pushTitle} onChange={e => setPushTitle(e.target.value)} 
+                     className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-400 dark:text-white"
+                     placeholder="New feature announcement!"
+                   />
+                </div>
+                <div>
+                   <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Message Body</label>
+                   <textarea 
+                     value={pushBody} onChange={e => setPushBody(e.target.value)} 
+                     rows="3"
+                     className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-400 dark:text-white resize-none"
+                     placeholder="Tap here to check out the new Community section..."
+                   />
+                </div>
+                
+                <button 
+                  onClick={handleSendPush}
+                  disabled={pushSending}
+                  className="w-full btn-primary py-3 rounded-xl font-bold flex justify-center items-center gap-2"
+                >
+                  {pushSending ? <span className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" /> : <><Send size={18}/> Push Now</>}
+                </button>
+              </div>
+            </div>
+
           </div>
         )}
       </div>

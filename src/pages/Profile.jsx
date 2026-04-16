@@ -80,10 +80,18 @@ export default function Profile() {
     ? Math.round((stats.completedVideos / stats.totalVideos) * 100)
     : 0;
 
+  const AVATARS = [
+    'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
+    'https://api.dicebear.com/7.x/avataaars/svg?seed=Luna',
+    'https://api.dicebear.com/7.x/avataaars/svg?seed=Oliver',
+    'https://api.dicebear.com/7.x/avataaars/svg?seed=Jasper',
+    'https://api.dicebear.com/7.x/avataaars/svg?seed=Chloe',
+  ];
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans">
       {/* Hero Header */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-orange-500 via-amber-500 to-orange-600 text-white">
+      <div className="relative overflow-hidden bg-gradient-to-br from-orange-500 via-amber-500 to-orange-600 text-white theme-lavender:from-violet-500 theme-lavender:via-purple-500 theme-lavender:to-fuchsia-500">
         <div className="absolute inset-0 opacity-20">
           <div className="absolute top-10 left-10 w-48 h-48 bg-white rounded-full blur-3xl" />
           <div className="absolute bottom-5 right-10 w-64 h-32 bg-yellow-300 rounded-full blur-3xl" />
@@ -112,16 +120,29 @@ export default function Profile() {
               {editing && (
                 <button
                   onClick={() => fileRef.current?.click()}
-                  className="absolute inset-0 bg-black/40 rounded-3xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                  className="absolute inset-0 bg-black/40 rounded-3xl flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition"
                 >
                   <Camera size={22} className="text-white" />
+                  <span className="text-xs font-bold mt-1">Upload</span>
                 </button>
               )}
               <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
             </div>
 
             {/* Info */}
-            <div className="flex-1 text-center sm:text-left">
+            <div className="flex-1 text-center sm:text-left flex flex-col items-center sm:items-start">
+              {editing && (
+                <div className="flex gap-2 mb-4 overflow-x-auto justify-center sm:justify-start w-full px-2 max-w-[250px] sm:max-w-md">
+                  {AVATARS.map((av) => (
+                    <img 
+                      key={av} src={av} alt="avatar option" 
+                      onClick={() => setAvatarPreview(av)}
+                      className={`w-10 h-10 rounded-full cursor-pointer border-2 transition ${avatarPreview === av ? 'border-white scale-110 shadow-lg' : 'border-transparent opacity-70 hover:opacity-100'}`}
+                    />
+                  ))}
+                </div>
+              )}
+              
               {editing ? (
                 <input
                   value={form.name}

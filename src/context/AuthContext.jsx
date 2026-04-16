@@ -1,5 +1,6 @@
 import { createContext, useState, useEffect, useContext } from 'react';
 import api, { authService } from '../api/api';
+import { requestForToken, onMessageListener } from '../utils/firebase';
 
 const AuthContext = createContext();
 
@@ -17,6 +18,28 @@ export const AuthProvider = ({ children }) => {
     }
     setLoading(false);
   }, []);
+
+  // Request & register FCM token automatically whenever a user is logged in
+  useEffect(() => {
+    if (user) {
+      const syncFCM = async () => {
+        try {
+          const fcmToken = await requestForToken();
+          if (fcmToken) {
+            await api.post('/api/profile/fcm-token', { token: fcmToken });
+          }
+        } catch (err) {
+          console.log("Failed to sync FCM token", err);
+        }
+      };
+      syncFCM();
+
+      // Listen for foreground messages
+      onMessageListener().then(payload => {
+         alert(`Notification: ${payload?.notification?.title}\n${payload?.notification?.body}`);
+      }).catch(err => console.log('failed: ', err));
+    }
+  }, [user]);
 
   const login = async (email, password) => {
     const data = await authService.login(email, password);

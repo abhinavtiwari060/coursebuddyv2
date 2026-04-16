@@ -8,6 +8,7 @@ import Signup from './pages/Signup';
 import AdminDashboard from './pages/AdminDashboard';
 import Profile from './pages/Profile';
 import Leaderboard from './pages/Leaderboard';
+import Community from './pages/Community';
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
@@ -55,6 +56,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Leaderboard />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/community" 
+            element={
+              <ProtectedRoute>
+                <Community />
               </ProtectedRoute>
             } 
           />

@@ -116,21 +116,21 @@ export const bugReportService = {
   submit: (data) => api.post("/api/bug-report", data).then((r) => r.data),
 };
 
+// ── Community Service ────────────────────
+export const communityService = {
+  getDiscussions: () => api.get("/api/community").then((r) => r.data),
+  postDiscussion: (content) => api.post("/api/community", { content }).then((r) => r.data),
+  likeDiscussion: (id) => api.post(`/api/community/${id}/like`).then((r) => r.data),
+};
+
 // ── Admin Service ────────────────────────
 export const adminService = {
   getUsers: () => api.get("/api/admin/users").then((r) => r.data),
-
-  getUserDetails: (id) =>
-    api.get(`/api/admin/users/${id}`).then((r) => r.data),
-
-  deleteUser: (id) =>
-    api.delete(`/api/admin/users/${id}`).then((r) => r.data),
-
-  toggleBlock: (id) =>
-    api.put(`/api/admin/users/${id}/block`).then((r) => r.data),
-
-  getLeaderboard: () =>
-    api.get("/api/admin/leaderboard").then((r) => r.data),
+  getUserDetails: (id) => api.get(`/api/admin/users/${id}`).then((r) => r.data),
+  deleteUser: (id) => api.delete(`/api/admin/users/${id}`).then((r) => r.data),
+  toggleBlock: (id) => api.put(`/api/admin/users/${id}/block`).then((r) => r.data),
+  getLeaderboard: () => api.get("/api/admin/leaderboard").then((r) => r.data),
+  sendPush: (data) => api.post("/api/admin/push", data).then((r) => r.data),
 };
 
 // Default export
