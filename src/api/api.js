@@ -43,12 +43,17 @@ export const authService = {
 
   login: (email, password) =>
     api.post("/api/auth/login", { email, password }).then((r) => r.data),
+
+  googleLogin: (name, email, avatar) => 
+    api.post("/api/auth/google", { name, email, avatar }).then((r) => r.data),
 };
 
 // ── Profile Service ──────────────────────
 export const profileService = {
   get: () => api.get("/api/profile").then((r) => r.data),
   update: (data) => api.put("/api/profile", data).then((r) => r.data),
+  setFcmToken: (token) => api.post("/api/profile/fcm-token", { token }).then((r) => r.data),
+  removeFcmToken: () => api.delete("/api/profile/fcm-token").then((r) => r.data),
 };
 
 // ── Video Service ────────────────────────
@@ -131,6 +136,12 @@ export const adminService = {
   toggleBlock: (id) => api.put(`/api/admin/users/${id}/block`).then((r) => r.data),
   getLeaderboard: () => api.get("/api/admin/leaderboard").then((r) => r.data),
   sendPush: (data) => api.post("/api/admin/push", data).then((r) => r.data),
+  updateSettings: (settings) => api.post("/api/admin/settings", { settings }).then((r) => r.data),
+};
+
+// ── Global Settings Service ──────────────
+export const settingsService = {
+  getSettings: () => api.get("/api/settings").then((r) => r.data),
 };
 
 // Default export

@@ -4,7 +4,7 @@ import api from '../api/api';
 import { formatDuration } from '../utils/helpers';
 import {
   User, Mail, Edit3, Save, X, Camera, BookOpen, CheckCircle2,
-  Clock, Flame, Trophy, Calendar, LogOut, ArrowLeft
+  Clock, Flame, Trophy, Calendar, LogOut, ArrowLeft, Bell, BellOff
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -59,6 +59,29 @@ export default function Profile() {
       console.error(err);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const toggleNotifications = async () => {
+    try {
+      if (profile.user.fcmToken) {
+        await api.delete('/api/profile/fcm-token');
+        setProfile(prev => ({ ...prev, user: { ...prev.user, fcmToken: null } }));
+        alert("Push notifications completely disabled.");
+      } else {
+        const { requestForToken } = await import('../utils/firebase');
+        const token = await requestForToken();
+        if (token) {
+          await api.post('/api/profile/fcm-token', { token });
+          setProfile(prev => ({ ...prev, user: { ...prev.user, fcmToken: token } }));
+          alert("Push notifications enabled!");
+        } else {
+          alert("Permission denied or error generating token. Check browser settings.");
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to toggle notifications.");
     }
   };
 
@@ -158,6 +181,16 @@ export default function Profile() {
               <p className="text-white/70 text-xs mt-1 flex items-center justify-center sm:justify-start gap-2">
                 <Calendar size={13} /> Joined {joinDate}
               </p>
+              
+              {!editing && (
+                 <button 
+                   onClick={toggleNotifications}
+                   className={`mt-4 px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 transition ${u.fcmToken ? 'bg-green-500/20 text-green-100 hover:bg-green-500/30' : 'bg-slate-500/20 text-slate-200 hover:bg-slate-500/30'}`}
+                 >
+                   {u.fcmToken ? <><Bell size={14}/> Push Active</> : <><BellOff size={14}/> Push Inactive (Click to Enable)</>}
+                 </button>
+              )}
+
               {editing ? (
                 <textarea
                   value={form.bio}

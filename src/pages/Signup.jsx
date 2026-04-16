@@ -4,7 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { BookOpen, User, Mail, Lock, AlertCircle, Loader2 } from 'lucide-react';
 
 export default function Signup() {
-  const { signup } = useAuth();
+  const { signup, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
   const [formData, setFormData] = useState({ name: '', email: '', password: '' });
   const [error, setError] = useState('');
@@ -96,6 +96,31 @@ export default function Signup() {
             className="btn-primary w-full py-4 rounded-xl flex items-center justify-center font-bold tracking-wide mt-2"
           >
             {loading ? <Loader2 className="animate-spin" size={20} /> : 'CREATE ACCOUNT'}
+          </button>
+
+          <div className="relative my-6 text-center">
+             <span className="bg-white dark:bg-slate-900 px-3 text-xs font-bold text-slate-400 relative z-10">OR</span>
+             <div className="absolute top-1/2 left-0 w-full h-px bg-slate-200 dark:bg-slate-800 -z-0"></div>
+          </div>
+
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                setLoading(true);
+                const user = await loginWithGoogle();
+                if (user.role === 'admin') navigate('/admin');
+                else navigate('/dashboard');
+              } catch (err) {
+                setError('Google Signup failed: ' + err.message);
+                setLoading(false);
+              }
+            }}
+            disabled={loading}
+            className="w-full bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 py-3 rounded-xl border border-slate-200 dark:border-slate-700 font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition shadow-sm flex items-center justify-center gap-3"
+          >
+            <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-5 h-5" alt="G" />
+            Sign up with Google
           </button>
         </form>
 

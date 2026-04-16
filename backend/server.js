@@ -12,6 +12,7 @@ import Video from './models/Video.js';
 import Course from './models/Course.js';
 import Streak from './models/Streak.js';
 import Discussion from './models/Discussion.js';
+import Settings from './models/Settings.js';
 import admin from 'firebase-admin';
 
 import fs from 'fs';
@@ -132,6 +133,59 @@ app.post('/api/auth/login', async (req, res) => {
       token,
       user: { id: user._id, name: user.name, email, role: user.role, status: user.status },
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/google', async (req, res) => {
+  try {
+    const { name, email, avatar } = req.body;
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      // Auto-signup
+      const hashedPassword = await bcrypt.hash(email + process.env.JWT_SECRET, 10); // Dummy pass for google users
+      const role = email === 'admin@studyflow.com' ? 'admin' : 'user';
+      user = new User({ name, email, password: hashedPassword, role, avatar });
+      await user.save();
+    } else if (user.status === 'blocked') {
+      return res.status(403).json({ error: 'Your account has been blocked. Contact admin.' });
+    }
+
+    const token = jwt.sign(
+      { id: user._id, role: user.role },
+      process.env.JWT_SECRET || 'secret',
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      token,
+      user: { id: user._id, name: user.name, email: user.email, role: user.role, status: user.status, avatar: user.avatar },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Global Settings ─────────────────
+app.get('/api/settings', async (req, res) => {
+  try {
+    const settings = await Settings.find();
+    const config = settings.reduce((acc, s) => ({ ...acc, [s.key]: s.value }), {});
+    res.json(config);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/settings', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { settings } = req.body; // e.g. { theme: 'theme-lavender' }
+    for (const [key, value] of Object.entries(settings)) {
+      await Settings.findOneAndUpdate({ key }, { value }, { upsert: true });
+    }
+    res.json({ message: 'Settings updated successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -453,6 +507,15 @@ app.post('/api/profile/fcm-token', authMiddleware, async (req, res) => {
     const { token } = req.body;
     await User.findByIdAndUpdate(req.user.id, { fcmToken: token });
     res.json({ message: "Token updated" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/profile/fcm-token', authMiddleware, async (req, res) => {
+  try {
+    await User.findByIdAndUpdate(req.user.id, { fcmToken: null });
+    res.json({ message: "Notifications disabled" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -45,15 +45,21 @@ export default function AdminDashboard() {
     setIsLavender(document.documentElement.classList.contains('theme-lavender'));
   }, []);
 
-  const toggleLavenderTheme = () => {
-    if (isLavender) {
-      document.documentElement.classList.remove('theme-lavender');
-      localStorage.removeItem('cb_theme_lavender');
-    } else {
-      document.documentElement.classList.add('theme-lavender');
-      localStorage.setItem('cb_theme_lavender', 'true');
-    }
+  const toggleLavenderTheme = async () => {
+    const newTheme = isLavender ? 'default' : 'theme-lavender';
     setIsLavender(!isLavender);
+    
+    // Optimistic UI update
+    document.documentElement.classList.remove('theme-lavender');
+    if (newTheme === 'theme-lavender') document.documentElement.classList.add('theme-lavender');
+
+    try {
+      await adminService.updateSettings({ theme: newTheme });
+      alert("Success! Global theme changed for all users.");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update global theme");
+    }
   };
 
   const handleSendPush = async () => {
@@ -534,7 +540,7 @@ export default function AdminDashboard() {
                 </div>
                 <h2 className="text-xl font-black dark:text-white">Theme & Styling</h2>
               </div>
-              <p className="text-sm text-slate-500 mb-6">Switch the entire application color schema dynamically. Users will see the default, but this sets your personal admin session theme!</p>
+              <p className="text-sm text-slate-500 mb-6">Switch the entire application color schema dynamically. This sets the theme **Globally** for all active users watching screens instantly!</p>
               
               <button
                 onClick={toggleLavenderTheme}

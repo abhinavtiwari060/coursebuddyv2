@@ -1,6 +1,6 @@
 import { createContext, useState, useEffect, useContext } from 'react';
 import api, { authService } from '../api/api';
-import { requestForToken, onMessageListener } from '../utils/firebase';
+import { requestForToken, onMessageListener, signInWithGoogle } from '../utils/firebase';
 
 const AuthContext = createContext();
 
@@ -24,9 +24,15 @@ export const AuthProvider = ({ children }) => {
     if (user) {
       const syncFCM = async () => {
         try {
-          const fcmToken = await requestForToken();
-          if (fcmToken) {
-            await api.post('/api/profile/fcm-token', { token: fcmToken });
+          if (Notification.permission === 'default') {
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+              const fcmToken = await requestForToken();
+              if (fcmToken) await api.post('/api/profile/fcm-token', { token: fcmToken });
+            }
+          } else if (Notification.permission === 'granted') {
+            const fcmToken = await requestForToken();
+            if (fcmToken) await api.post('/api/profile/fcm-token', { token: fcmToken });
           }
         } catch (err) {
           console.log("Failed to sync FCM token", err);
@@ -61,6 +67,24 @@ export const AuthProvider = ({ children }) => {
     return userData;
   };
 
+  const loginWithGoogle = async () => {
+    const result = await signInWithGoogle();
+    const fbUser = result.user;
+    
+    // Connect firebase user to our backend
+    const data = await authService.googleLogin(
+      fbUser.displayName || 'Google User', 
+      fbUser.email, 
+      fbUser.photoURL || ''
+    );
+    const { token, user: userData } = data;
+    
+    localStorage.setItem('studyflow_token', token);
+    localStorage.setItem('studyflow_user', JSON.stringify(userData));
+    setUser(userData);
+    return userData;
+  };
+
   const logout = () => {
     localStorage.removeItem('studyflow_token');
     localStorage.removeItem('studyflow_user');
@@ -68,7 +92,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, loginWithGoogle, logout }}>
       {!loading && children}
     </AuthContext.Provider>
   );
