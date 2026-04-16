@@ -15,8 +15,12 @@ dotenv.config();
 
 const app = express();
 app.use(express.json());
+
+import cors from "cors";
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
+  origin: "*", // temporarily allow all
+  methods: ["GET", "POST", "PUT", "DELETE"],
   credentials: true
 }));
 
