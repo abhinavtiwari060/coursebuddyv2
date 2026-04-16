@@ -11,6 +11,16 @@ import User from './models/User.js';
 import Video from './models/Video.js';
 import Course from './models/Course.js';
 import Streak from './models/Streak.js';
+import Discussion from './models/Discussion.js';
+import admin from 'firebase-admin';
+
+// Try initializing Firebase Admin (requires service account credentials in environment variable GOOGLE_APPLICATION_CREDENTIALS or passed manually)
+try {
+  admin.initializeApp();
+  console.log("🔥 Firebase Admin Initialized");
+} catch (err) {
+  console.log("Firebase Admin not configured yet.");
+}
 
 dotenv.config();
 
@@ -386,6 +396,83 @@ app.post('/api/bug-report', authMiddleware, async (req, res) => {
   }
 });
 
+// ── Community Discussions ─────────────────────
+app.get('/api/community', authMiddleware, async (req, res) => {
+  try {
+    const discussions = await Discussion.find().sort({ createdAt: -1 }).limit(50);
+    res.json(discussions);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/community', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    const discussion = new Discussion({
+      userId: req.user.id,
+      authorName: user.name,
+      authorAvatar: user.avatar,
+      content: req.body.content
+    });
+    await discussion.save();
+    res.json(discussion);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/community/:id/like', authMiddleware, async (req, res) => {
+  try {
+    const discussion = await Discussion.findByIdAndUpdate(
+      req.params.id,
+      { $inc: { likes: 1 } },
+      { new: true }
+    );
+    res.json(discussion);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Notifications (FCM) ─────────────────────
+app.post('/api/profile/fcm-token', authMiddleware, async (req, res) => {
+  try {
+    const { token } = req.body;
+    await User.findByIdAndUpdate(req.user.id, { fcmToken: token });
+    res.json({ message: "Token updated" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/push', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { title, body, userIds } = req.body; // userIds is array of specific IDs or empty for all
+    let tokens = [];
+
+    if (userIds && userIds.length > 0) {
+      const users = await User.find({ _id: { $in: userIds }, fcmToken: { $ne: null } });
+      tokens = users.map(u => u.fcmToken);
+    } else {
+      const users = await User.find({ fcmToken: { $ne: null } });
+      tokens = users.map(u => u.fcmToken);
+    }
+
+    if (tokens.length === 0) return res.status(400).json({ error: "No users have notifications enabled." });
+
+    const message = {
+      notification: { title, body },
+      tokens: tokens,
+    };
+
+    const response = await admin.messaging().sendEachForMulticast(message);
+    res.json({ message: `Push sent successfully. Success: ${response.successCount}, Failed: ${response.failureCount}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Admin Routes ─────────────────────
 app.get('/api/admin/users', authMiddleware, adminMiddleware, async (req, res) => {
   try {
@@ -461,7 +548,7 @@ app.delete('/api/admin/users/:id', authMiddleware, adminMiddleware, async (req, 
     await User.findByIdAndDelete(req.params.id);
     await Video.deleteMany({ userId: req.params.id });
     await Course.deleteMany({ userId: req.params.id });
-    await Streak.findOneAndDelete({ userId: req.params.id }).catch(() => {});
+    await Streak.findOneAndDelete({ userId: req.params.id }).catch(() => { });
     res.json({ message: 'User and all data deleted' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -509,3 +596,62 @@ mongoose.connect(process.env.MONGO_URI, { family: 4 })
     });
   })
   .catch(err => console.log("❌ DB Error:", err));
+
+// Fire base admin initialize
+import admin from "firebase-admin";
+import serviceAccount from "./config/serviceAccountKey.json" assert { type: "json" };
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
+// notificaton
+const users = await User.find({ fcmToken: { $ne: null } });
+
+const tokens = users.map(user => user.fcmToken);
+
+
+// push notification Api 
+app.post("/api/admin/push", async (req, res) => {
+  const { title, body } = req.body;
+
+  try {
+    const users = await User.find({ fcmToken: { $ne: null } });
+    const tokens = users.map(u => u.fcmToken);
+
+    const message = {
+      notification: { title, body },
+      tokens: tokens,
+    };
+
+    const response = await admin.messaging().sendEachForMulticast(message);
+
+    res.json({
+      success: true,
+      sent: response.successCount,
+      failed: response.failureCount
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Notification failed" });
+  }
+});
+
+
+// for spacific user notification
+const user = await User.findById(userId);
+
+await admin.messaging().send({
+  notification: {
+    title: "Personal Message",
+    body: "Hello Abhi bhai 🚀"
+  },
+  token: user.fcmToken
+});
+// expire tocken
+response.responses.forEach((resp, idx) => {
+  if (!resp.success) {
+    console.log("Invalid token:", tokens[idx]);
+  }
+});
