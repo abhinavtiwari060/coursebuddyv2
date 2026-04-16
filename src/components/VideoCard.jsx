@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Youtube, Send, CheckCircle2, Clock, Check, FileText } from 'lucide-react';
+import { Youtube, Send, CheckCircle2, Clock, Check, FileText, Trash2 } from 'lucide-react';
 import { formatDuration } from '../utils/helpers';
 
-export default function VideoCard({ video, onToggleComplete, onUpdateNotes }) {
+export default function VideoCard({ video, onToggleComplete, onUpdateNotes, onDelete }) {
   const isYouTube = video.platform === 'YouTube';
   const [showNotes, setShowNotes] = useState(false);
   const [notes, setNotes] = useState(video.notes || '');
@@ -74,6 +74,13 @@ export default function VideoCard({ video, onToggleComplete, onUpdateNotes }) {
 
       {/* Actions */}
       <div className="flex gap-2 mt-2">
+        <button
+          onClick={() => onDelete && onDelete(video.id)}
+          title="Delete Video"
+          className="flex-shrink-0 w-11 py-2.5 rounded-xl border flex items-center justify-center transition-colors shadow-sm bg-white dark:bg-slate-800 border-red-200 dark:border-red-900/50 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+        >
+          <Trash2 size={18} />
+        </button>
         <button
           onClick={() => setShowNotes(!showNotes)}
           title="Notes"
