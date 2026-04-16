@@ -39,8 +39,8 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/studyflow',
   useUnifiedTopology: true,
   family: 4, // Force IPv4
 })
-.then(() => console.log('MongoDB connected'))
-.catch(err => console.log('DB Connection Error:', err));
+  .then(() => console.log('MongoDB connected'))
+  .catch(err => console.log('DB Connection Error:', err));
 
 // ── Middleware ────────────────────────────────────────────────
 const authMiddleware = (req, res, next) => {
@@ -76,7 +76,7 @@ app.post('/api/auth/signup', async (req, res) => {
 
     const user = new User({ name, email, password: hashedPassword, role });
     await user.save();
-    
+
     // sign token
     const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET || 'super_secret', { expiresIn: '7d' });
     res.status(201).json({ token, user: { id: user._id, name, email, role } });
@@ -157,17 +157,17 @@ app.post('/api/streak/update', authMiddleware, async (req, res) => {
     } else {
       const today = new Date();
       const lastActive = streak.lastActiveDate ? new Date(streak.lastActiveDate) : null;
-      
+
       if (!lastActive) {
         streak.currentStreak = 1;
       } else {
         const diffTime = Math.abs(today - lastActive);
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-        
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
         if (diffDays === 1 || diffDays === 0) {
           // It's technically next day or same day, update streak if diffDays == 1,
           if (today.toDateString() !== lastActive.toDateString()) {
-             streak.currentStreak += 1;
+            streak.currentStreak += 1;
           }
         } else if (diffDays > 1) {
           streak.currentStreak = 1; // Streak broken
@@ -234,7 +234,7 @@ app.get('/api/admin/users', authMiddleware, adminMiddleware, async (req, res) =>
       const videos = await Video.find({ userId: user._id });
       const completed = videos.filter(v => v.completed);
       const totalWatchTime = completed.reduce((a, v) => a + (v.duration || 0), 0);
-      
+
       return {
         ...user.toObject(),
         totalVideos: videos.length,
@@ -242,7 +242,7 @@ app.get('/api/admin/users', authMiddleware, adminMiddleware, async (req, res) =>
         totalWatchTime
       };
     }));
-    
+
     res.json(userStats);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -252,7 +252,7 @@ app.get('/api/admin/users', authMiddleware, adminMiddleware, async (req, res) =>
 app.delete('/api/admin/users/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     await User.findByIdAndDelete(req.params.id);
-    await Video.deleteMany({ userId: req.params.id }); 
+    await Video.deleteMany({ userId: req.params.id });
     await Course.deleteMany({ userId: req.params.id });
     await Streak.deleteOne({ userId: req.params.id });
     res.json({ message: 'User and associated data deleted' });
@@ -265,11 +265,11 @@ app.get('/api/admin/users/:id', authMiddleware, adminMiddleware, async (req, res
   try {
     const user = await User.findById(req.params.id).select('-password');
     if (!user) return res.status(404).json({ error: 'User not found' });
-    
+
     const videos = await Video.find({ userId: user._id });
     const courses = await Course.find({ userId: user._id });
     const streak = await Streak.findOne({ userId: user._id });
-    
+
     const completed = videos.filter(v => v.completed);
     const totalWatchTime = completed.reduce((a, v) => a + (v.duration || 0), 0);
 
@@ -303,4 +303,12 @@ app.put('/api/admin/users/:id/block', authMiddleware, adminMiddleware, async (re
 
 // Start Server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
+mongoose.connect(process.env.MONGO_URI, { family: 4 })
+  .then(() => {
+    console.log("✅ MongoDB connected");
+
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
+  })
+  .catch(err => console.log("❌ DB Connection Error:", err));

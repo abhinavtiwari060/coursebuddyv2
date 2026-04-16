@@ -1,8 +1,17 @@
 import axios from 'axios';
 
 // ── Axios instance ────────────────────────────────────────────────────────────
+const getBaseURL = () => {
+  let url = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+  // If the user forgot to add /api at the end in production, auto-append it
+  if (!url.endsWith('/api') && !url.endsWith('/api/')) {
+    url = url.endsWith('/') ? `${url}api` : `${url}/api`;
+  }
+  return url;
+};
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  baseURL: getBaseURL(),
 });
 
 // Attach JWT from localStorage to every request automatically
