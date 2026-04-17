@@ -39,20 +39,24 @@ export default function Navbar() {
         {/* Right side */}
         <div className="flex items-center gap-2">
           {/* Leaderboard quick link */}
-          <Link
-            to="/leaderboard"
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition"
-          >
-            <Trophy size={14} /> Leaderboard
-          </Link>
+          {user?.features?.canUseLeaderboard !== false && (
+            <Link
+              to="/leaderboard"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition"
+            >
+              <Trophy size={14} /> Leaderboard
+            </Link>
+          )}
 
           {/* Bug Report button */}
-          <button
-            onClick={() => setShowBugReport(true)}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40 transition"
-          >
-            <Bug size={14} /> Report Bug
-          </button>
+          {user?.features?.canReportBug !== false && (
+            <button
+              onClick={() => setShowBugReport(true)}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40 transition"
+            >
+              <Bug size={14} /> Report Bug
+            </button>
+          )}
 
           <ThemeToggle />
 
@@ -85,26 +89,32 @@ export default function Navbar() {
                     >
                       <User size={15} /> My Profile
                     </Link>
-                    <Link
-                      to="/leaderboard"
-                      onClick={() => setShowMenu(false)}
-                      className="flex items-center gap-2 px-4 py-3 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
-                    >
-                      <Trophy size={15} /> Leaderboard
-                    </Link>
-                    <Link
-                      to="/community"
-                      onClick={() => setShowMenu(false)}
-                      className="flex items-center gap-2 px-4 py-3 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
-                    >
-                      <MessageSquare size={15} /> Community
-                    </Link>
-                    <button
-                      onClick={() => { setShowMenu(false); setShowBugReport(true); }}
-                      className="w-full flex items-center gap-2 px-4 py-3 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition"
-                    >
-                      <Bug size={15} /> Report Bug
-                    </button>
+                    {user?.features?.canUseLeaderboard !== false && (
+                      <Link
+                        to="/leaderboard"
+                        onClick={() => setShowMenu(false)}
+                        className="flex items-center gap-2 px-4 py-3 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+                      >
+                        <Trophy size={15} /> Leaderboard
+                      </Link>
+                    )}
+                    {user?.features?.canUseCommunity !== false && (
+                      <Link
+                        to="/community"
+                        onClick={() => setShowMenu(false)}
+                        className="flex items-center gap-2 px-4 py-3 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+                      >
+                        <MessageSquare size={15} /> Community
+                      </Link>
+                    )}
+                    {user?.features?.canReportBug !== false && (
+                      <button
+                        onClick={() => { setShowMenu(false); setShowBugReport(true); }}
+                        className="w-full flex items-center gap-2 px-4 py-3 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition"
+                      >
+                        <Bug size={15} /> Report Bug
+                      </button>
+                    )}
                     <div className="border-t border-slate-100 dark:border-slate-800">
                       <button
                         onClick={() => { setShowMenu(false); logout(); navigate('/login'); }}

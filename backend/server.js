@@ -13,6 +13,8 @@ import Course from './models/Course.js';
 import Streak from './models/Streak.js';
 import Discussion from './models/Discussion.js';
 import Settings from './models/Settings.js';
+import BugReport from './models/BugReport.js';
+import Notification from './models/Notification.js';
 import admin from 'firebase-admin';
 
 import fs from 'fs';
@@ -139,6 +141,9 @@ app.post('/api/auth/login', async (req, res) => {
     if (!valid)
       return res.status(400).json({ error: 'Invalid credentials' });
 
+    user.isOnline = true;
+    await user.save();
+
     const token = jwt.sign(
       { id: user._id, role: user.role },
       process.env.JWT_SECRET || 'secret',
@@ -147,7 +152,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     res.json({
       token,
-      user: { id: user._id, name: user.name, email, role: user.role, status: user.status },
+      user: { id: user._id, name: user.name, email, role: user.role, status: user.status, features: user.features, isOnline: user.isOnline },
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -177,7 +182,7 @@ app.post('/api/auth/google', async (req, res) => {
 
     res.json({
       token,
-      user: { id: user._id, name: user.name, email: user.email, role: user.role, status: user.status, avatar: user.avatar },
+      user: { id: user._id, name: user.name, email: user.email, role: user.role, status: user.status, avatar: user.avatar, features: user.features, isOnline: user.isOnline },
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -404,8 +409,9 @@ app.get('/api/leaderboard', authMiddleware, async (req, res) => {
       return {
         _id: u._id,
         name: u.name,
-        email: u.email,
+        email: u.email.replace(/(.{2})(.*)(?=@)/, (gp1, gp2, gp3) => gp1 + '*'.repeat(gp2.length)),
         avatar: u.avatar,
+        isOnline: u.isOnline,
         totalWatchTime,
         completedVideos: videos.length,
         totalCourses: courses,
@@ -426,6 +432,23 @@ app.post('/api/bug-report', authMiddleware, async (req, res) => {
   try {
     const { title, description, severity, steps, browser } = req.body;
     const user = await User.findById(req.user.id).select('name email');
+
+    const report = new BugReport({
+      userId: req.user.id,
+      title,
+      description,
+      severity,
+      steps,
+      browser,
+    });
+    await report.save();
+
+    // Notify user that bug is pending
+    await Notification.create({
+      userId: req.user.id,
+      title: 'Bug Report Received',
+      body: `Your bug report "${title}" has been received and is currently pending. We'll notify you once it's resolved.`
+    });
 
     // Try to send email via nodemailer if configured
     try {
@@ -537,6 +560,24 @@ app.delete('/api/profile/fcm-token', authMiddleware, async (req, res) => {
   }
 });
 
+app.get('/api/notifications', authMiddleware, async (req, res) => {
+  try {
+    const notifs = await Notification.find({ userId: req.user.id }).sort({ createdAt: -1 });
+    res.json(notifs);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/notifications/:id/read', authMiddleware, async (req, res) => {
+  try {
+    await Notification.findByIdAndUpdate(req.params.id, { isRead: true });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/admin/push', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { title, body, userIds } = req.body; // userIds is array of specific IDs or empty for all
@@ -548,6 +589,18 @@ app.post('/api/admin/push', authMiddleware, adminMiddleware, async (req, res) =>
     } else {
       const users = await User.find({ fcmToken: { $ne: null } });
       tokens = users.map(u => u.fcmToken);
+    }
+
+    let targetUsers = [];
+    if (userIds && userIds.length > 0) {
+      targetUsers = await User.find({ _id: { $in: userIds } });
+    } else {
+      targetUsers = await User.find({ role: 'user' });
+    }
+
+    const notifs = targetUsers.map(u => ({ userId: u._id, title, body }));
+    if (notifs.length > 0) {
+      await Notification.insertMany(notifs);
     }
 
     if (tokens.length === 0) return res.status(400).json({ error: "No users have notifications enabled." });
@@ -664,6 +717,53 @@ app.delete('/api/admin/users/:id', authMiddleware, adminMiddleware, async (req, 
   }
 });
 
+
+app.put('/api/admin/users/:id/features', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const u = await User.findByIdAndUpdate(req.params.id, { features: req.body.features }, { new: true });
+    res.json(u);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/bug-reports', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const reports = await BugReport.find().populate('userId', 'name email').sort({ createdAt: -1 });
+    res.json(reports);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/admin/bug-reports/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const report = await BugReport.findByIdAndUpdate(req.params.id, { status }, { new: true }).populate('userId', 'name email');
+    
+    if (report) {
+       await Notification.create({
+         userId: report.userId._id,
+         title: 'Bug Report Update',
+         body: `Your bug report "${report.title}" is now marked as ${status}.`
+       });
+    }
+
+    res.json(report);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/bug-reports/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    await BugReport.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/admin/leaderboard', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const allUsers = await User.find({ role: 'user' }).select('-password');
@@ -679,6 +779,7 @@ app.get('/api/admin/leaderboard', authMiddleware, adminMiddleware, async (req, r
         email: u.email,
         status: u.status,
         avatar: u.avatar,
+        isOnline: u.isOnline,
         totalWatchTime,
         completedVideos: videos.length,
         totalCourses: courses,

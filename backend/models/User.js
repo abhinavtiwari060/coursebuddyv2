@@ -9,6 +9,18 @@ const userSchema = new mongoose.Schema({
   bio: { type: String, default: '' },
   avatar: { type: String, default: '' }, // URL or base64
   fcmToken: { type: String, default: null }, // For Push Notifications
+  isOnline: { type: Boolean, default: false },
+  features: {
+    type: Object,
+    default: {
+      canAddCourse: true,
+      canDeleteCourse: true,
+      canUsePomodoro: true,
+      canUseCommunity: true,
+      canUseLeaderboard: true,
+      canReportBug: true
+    }
+  },
   createdAt: { type: Date, default: Date.now }
 });
 

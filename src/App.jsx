@@ -23,6 +23,19 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
+const FeatureGate = ({ children, feature }) => {
+  const { user, loading } = useAuth();
+  
+  if (loading) return <div className="min-h-screen flex items-center justify-center dark:text-white">Loading...</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  
+  if (user.features && user.features[feature] === false) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  
+  return children;
+};
+
 export default function App() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
@@ -124,17 +137,17 @@ export default function App() {
           <Route 
             path="/leaderboard" 
             element={
-              <ProtectedRoute>
+              <FeatureGate feature="canUseLeaderboard">
                 <Leaderboard />
-              </ProtectedRoute>
+              </FeatureGate>
             } 
           />
           <Route 
             path="/community" 
             element={
-              <ProtectedRoute>
+              <FeatureGate feature="canUseCommunity">
                 <Community />
-              </ProtectedRoute>
+              </FeatureGate>
             } 
           />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

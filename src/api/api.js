@@ -128,15 +128,25 @@ export const communityService = {
   likeDiscussion: (id) => api.post(`/api/community/${id}/like`).then((r) => r.data),
 };
 
+// ── Notification Service ─────────────────
+export const notificationService = {
+  get: () => api.get("/api/notifications").then((r) => r.data),
+  markRead: (id) => api.put(`/api/notifications/${id}/read`).then((r) => r.data),
+};
+
 // ── Admin Service ────────────────────────
 export const adminService = {
   getUsers: () => api.get("/api/admin/users").then((r) => r.data),
   getUserDetails: (id) => api.get(`/api/admin/users/${id}`).then((r) => r.data),
   deleteUser: (id) => api.delete(`/api/admin/users/${id}`).then((r) => r.data),
   toggleBlock: (id) => api.put(`/api/admin/users/${id}/block`).then((r) => r.data),
+  updateFeatures: (id, features) => api.put(`/api/admin/users/${id}/features`, { features }).then((r) => r.data),
   getLeaderboard: () => api.get("/api/admin/leaderboard").then((r) => r.data),
   sendPush: (data) => api.post("/api/admin/push", data).then((r) => r.data),
   updateSettings: (settings) => api.post("/api/admin/settings", { settings }).then((r) => r.data),
+  getBugReports: () => api.get("/api/admin/bug-reports").then(r => r.data),
+  updateBugReport: (id, status) => api.put(`/api/admin/bug-reports/${id}`, { status }).then(r => r.data),
+  deleteBugReport: (id) => api.delete(`/api/admin/bug-reports/${id}`).then(r => r.data),
 };
 
 // ── Global Settings Service ──────────────

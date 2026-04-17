@@ -6,7 +6,8 @@ import { formatDuration } from '../utils/helpers';
 import {
   Users, Trash2, Clock, PlayCircle, LogOut, ShieldAlert, X, BookOpen,
   CheckCircle2, Trophy, Medal, Crown, BarChart2, Activity, Eye,
-  Search, Filter, ChevronDown, TrendingUp, Flame, AlertTriangle, Send, Palette
+  Search, Filter, ChevronDown, TrendingUp, Flame, AlertTriangle, Send, Palette,
+  Bug, ToggleLeft, ToggleRight, Circle
 } from 'lucide-react';
 
 function getInitials(name = '') {
@@ -16,8 +17,18 @@ function getInitials(name = '') {
 const TABS = [
   { id: 'users', label: 'Users', icon: <Users size={16} /> },
   { id: 'leaderboard', label: 'Leaderboard', icon: <Trophy size={16} /> },
+  { id: 'bugs', label: 'Bug Reports', icon: <Bug size={16} /> },
   { id: 'notifications', label: 'Push & Theme', icon: <Send size={16} /> },
 ];
+
+const FEATURE_LABELS = {
+  canAddCourse: 'Add Course',
+  canDeleteCourse: 'Delete Course',
+  canUsePomodoro: 'Pomodoro Timer',
+  canUseCommunity: 'Community',
+  canUseLeaderboard: 'Leaderboard',
+  canReportBug: 'Bug Report',
+};
 
 export default function AdminDashboard() {
   const { user, logout } = useAuth();
@@ -36,6 +47,10 @@ export default function AdminDashboard() {
   const [pushTitle, setPushTitle] = useState('');
   const [pushBody, setPushBody] = useState('');
   const [pushSending, setPushSending] = useState(false);
+
+  // Bug reports state
+  const [bugReports, setBugReports] = useState([]);
+  const [bugLoading, setBugLoading] = useState(false);
 
   // Theme state
   const [isLavender, setIsLavender] = useState(false);
@@ -89,16 +104,51 @@ export default function AdminDashboard() {
 
   const fetchAll = async () => {
     try {
-      const [usersData, lbData] = await Promise.all([
+      const [usersData, lbData, bugsData] = await Promise.all([
         adminService.getUsers(),
         adminService.getLeaderboard(),
+        adminService.getBugReports().catch(() => []),
       ]);
       setUsers(usersData);
       setLeaderboard(lbData);
+      setBugReports(bugsData);
     } catch (err) {
       console.error('Failed to fetch admin data', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUpdateBugStatus = async (id, status) => {
+    try {
+      const updated = await adminService.updateBugReport(id, status);
+      setBugReports(prev => prev.map(b => b._id === id ? updated : b));
+    } catch (err) {
+      alert('Failed to update bug report');
+    }
+  };
+
+  const handleDeleteBug = async (id) => {
+    if (!window.confirm('Delete this bug report?')) return;
+    try {
+      await adminService.deleteBugReport(id);
+      setBugReports(prev => prev.filter(b => b._id !== id));
+    } catch (err) {
+      alert('Failed to delete bug report');
+    }
+  };
+
+  const handleToggleFeature = async (userId, featureKey, currentValue) => {
+    const u = users.find(x => x._id === userId);
+    const newFeatures = { ...u.features, [featureKey]: !currentValue };
+    try {
+      await adminService.updateFeatures(userId, newFeatures);
+      setUsers(prev => prev.map(x => x._id === userId ? { ...x, features: newFeatures } : x));
+      if (userDetails?.user?._id === userId) {
+        setUserDetails(prev => ({ ...prev, user: { ...prev.user, features: newFeatures } }));
+      }
+    } catch (err) {
+      alert('Failed to update feature');
     }
   };
 
@@ -440,6 +490,32 @@ export default function AdminDashboard() {
                         </div>
                       </div>
                     )}
+                    {/* Feature Toggles */}
+                    <div>
+                      <h3 className="font-bold text-sm dark:text-slate-200 mb-3 flex items-center gap-2">
+                        <ToggleLeft size={15} className="text-purple-500" /> Feature Access
+                      </h3>
+                      <div className="grid grid-cols-2 gap-2">
+                        {Object.entries(FEATURE_LABELS).map(([key, label]) => {
+                          const enabled = userDetails.user.features?.[key] !== false;
+                          return (
+                            <button
+                              key={key}
+                              onClick={() => handleToggleFeature(userDetails.user._id, key, enabled)}
+                              className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition border ${
+                                enabled
+                                  ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/20 dark:text-green-400'
+                                  : 'border-red-200 bg-red-50 text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400'
+                              }`}
+                            >
+                              {enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
                   </div>
                 ) : null}
               </div>
@@ -489,7 +565,10 @@ export default function AdminDashboard() {
                               </div>
                             )}
                             <div>
-                              <p className="font-bold text-sm dark:text-white">{u.name}</p>
+                              <div className="flex items-center gap-1.5">
+                                <div className={`w-2 h-2 rounded-full ${u.isOnline ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
+                                <p className="font-bold text-sm dark:text-white">{u.name}</p>
+                              </div>
                               <p className="text-xs text-slate-400">{u.email}</p>
                             </div>
                           </div>
@@ -524,6 +603,80 @@ export default function AdminDashboard() {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* Bug Reports Tab */}
+        {activeTab === 'bugs' && (
+          <div className="glass-card rounded-2xl overflow-hidden">
+            <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div>
+                <h2 className="font-black text-lg dark:text-white flex items-center gap-2">
+                  <Bug size={20} className="text-red-500" /> Bug Reports
+                </h2>
+                <p className="text-slate-400 text-sm">
+                  {bugReports.filter(b => b.status === 'pending').length} pending · {bugReports.filter(b => b.status === 'resolved').length} resolved
+                </p>
+              </div>
+            </div>
+
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {bugReports.length === 0 ? (
+                <div className="p-12 text-center text-slate-400 italic">No bug reports yet. 🎉</div>
+              ) : (
+                bugReports.map(bug => (
+                  <div key={bug._id} className="p-5 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                            bug.status === 'resolved' ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'
+                          }`} />
+                          <h3 className="font-bold dark:text-white truncate">{bug.title}</h3>
+                          <span className={`badge text-xs ${
+                            bug.severity === 'critical' ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' :
+                            bug.severity === 'high' ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400' :
+                            bug.severity === 'medium' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                            'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                          }`}>{bug.severity || 'low'}</span>
+                        </div>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 line-clamp-2">{bug.description}</p>
+                        {bug.steps && <p className="text-xs text-slate-400 mt-1">Steps: {bug.steps}</p>}
+                        <div className="flex items-center gap-3 mt-2 text-xs text-slate-400">
+                          <span>By: <strong className="text-slate-600 dark:text-slate-300">{bug.userId?.name || 'Unknown'}</strong></span>
+                          <span>{new Date(bug.createdAt).toLocaleDateString('en-IN')}</span>
+                          {bug.browser && <span>Browser: {bug.browser}</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {bug.status !== 'resolved' ? (
+                          <button
+                            onClick={() => handleUpdateBugStatus(bug._id, 'resolved')}
+                            className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-xl bg-green-100 text-green-700 hover:bg-green-500 hover:text-white dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-600 dark:hover:text-white transition"
+                          >
+                            <CheckCircle2 size={13} /> Resolve
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleUpdateBugStatus(bug._id, 'pending')}
+                            className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-xl bg-yellow-100 text-yellow-700 hover:bg-yellow-500 hover:text-white dark:bg-yellow-900/30 dark:text-yellow-400 transition"
+                          >
+                            <AlertTriangle size={13} /> Re-open
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDeleteBug(bug._id)}
+                          className="p-1.5 bg-red-50 text-red-500 hover:bg-red-500 hover:text-white dark:bg-red-900/20 dark:hover:bg-red-600 rounded-lg transition"
+                          title="Delete"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}

@@ -186,10 +186,13 @@ export default function Leaderboard() {
                   {/* Name + email */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
+                      <div className={`w-2 h-2 rounded-full ${leader.isOnline ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-600'}`} title={leader.isOnline ? 'Active' : 'Inactive'} />
                       <p className="font-bold text-sm dark:text-white truncate">{leader.name}</p>
                       {isMe && <span className="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full font-bold">You</span>}
                     </div>
-                    <p className="text-xs text-slate-400 truncate">{leader.email}</p>
+                    <p className="text-xs text-slate-400 truncate mt-1">
+                      {leader.email} • {leader.isOnline ? <span className="text-green-500 font-medium">Active</span> : <span>Inactive</span>}
+                    </p>
                   </div>
 
                   {/* Stats */}

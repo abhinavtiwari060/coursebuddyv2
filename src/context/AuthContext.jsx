@@ -85,7 +85,12 @@ export const AuthProvider = ({ children }) => {
     return userData;
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await api.post('/api/auth/logout');
+    } catch (err) {
+      console.log('Logout API error (non-critical)', err);
+    }
     localStorage.removeItem('studyflow_token');
     localStorage.removeItem('studyflow_user');
     setUser(null);

@@ -230,9 +230,11 @@ export default function Home() {
               {tab.icon}{tab.label}
             </button>
           ))}
-          <Link to="/leaderboard" className="flex items-center gap-2 px-5 py-3.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 whitespace-nowrap transition-all">
-            <Trophy size={18} /> Leaderboard
-          </Link>
+          {user?.features?.canUseLeaderboard !== false && (
+            <Link to="/leaderboard" className="flex items-center gap-2 px-5 py-3.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 whitespace-nowrap transition-all">
+              <Trophy size={18} /> Leaderboard
+            </Link>
+          )}
           <Link to="/profile" className="flex items-center gap-2 px-5 py-3.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-orange-600 dark:hover:text-orange-400 whitespace-nowrap transition-all">
             <User size={18} /> Profile
           </Link>
@@ -311,10 +313,10 @@ export default function Home() {
 
             <div className="space-y-6">
               <StreakCard streak={streak.count} />
-              <Pomodoro />
-              <AddCourseForm onAddCourse={handleAddCourse} />
-              <AddVideoForm courses={courses} onAddVideo={handleAddVideo} />
-              <PlaylistImport courses={courses} onAddVideo={handleAddVideo} />
+              {user?.features?.canUsePomodoro !== false && <Pomodoro />}
+              {user?.features?.canAddCourse !== false && <AddCourseForm onAddCourse={handleAddCourse} />}
+              {user?.features?.canAddVideo !== false && <AddVideoForm courses={courses} onAddVideo={handleAddVideo} />}
+              {user?.features?.canAddVideo !== false && <PlaylistImport courses={courses} onAddVideo={handleAddVideo} />}
             </div>
           </div>
         )}
