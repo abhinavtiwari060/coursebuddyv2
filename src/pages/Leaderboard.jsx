@@ -191,7 +191,7 @@ export default function Leaderboard() {
                       {isMe && <span className="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full font-bold">You</span>}
                     </div>
                     <p className="text-xs text-slate-400 truncate mt-1">
-                      {leader.email} • {leader.isOnline ? <span className="text-green-500 font-medium">Active</span> : <span>Inactive</span>}
+                      {leader.name} • {leader.isOnline ? <span className="text-green-500 font-medium">Active</span> : <span>Inactive</span>}
                     </p>
                   </div>
 
