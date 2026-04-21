@@ -1,7 +1,8 @@
 import ProgressBar from './ProgressBar';
 import { formatDuration } from '../utils/helpers';
-import { Clock, PlayCircle, CheckCircle2, TrendingUp, Sparkles, Bell } from 'lucide-react';
+import { Clock, PlayCircle, CheckCircle2, TrendingUp, Sparkles, Bell, Video } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { notificationService } from '../api/api';
 
 export default function Dashboard({ videos }) {
@@ -99,6 +100,24 @@ export default function Dashboard({ videos }) {
           </p>
           <h3 className="font-semibold text-slate-500 dark:text-slate-400 mt-2 relative z-10">Watch Time</h3>
         </div>
+      </div>
+
+      {/* Telegram Sync Banner */}
+      <div className="glass-card mb-8 p-6 rounded-3xl bg-blue-50/50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 flex flex-col md:flex-row items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-black flex items-center gap-2 dark:text-white mb-2">
+            <Video className="text-blue-500" /> Telegram Video Sync
+          </h2>
+          <p className="text-slate-600 dark:text-slate-400 text-sm max-w-lg">
+            Securely connect your Telegram account and sync videos directly from your private channels or groups right into Course Buddy!
+          </p>
+        </div>
+        <Link 
+          to="/telegram-sync" 
+          className="btn-primary w-full md:w-auto px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm shadow-blue-500/20 bg-blue-500 hover:bg-blue-600 border-none"
+        >
+          <Video size={18} /> Connect Telegram
+        </Link>
       </div>
 
       {/* Notifications Section */}
