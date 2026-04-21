@@ -55,7 +55,7 @@ const TelegramApp = () => {
       setSessionString(res.session_string);
       setStep(2);
     } catch (err) {
-      setError(err.response?.data?.detail || err.message);
+      setError(err.response?.data?.error || err.response?.data?.detail || err.message);
     }
     setLoading(false);
   };
@@ -73,7 +73,7 @@ const TelegramApp = () => {
       setStep(3);
       fetchChannelsSilently(); // Load channels after verification
     } catch (err) {
-      setError(err.response?.data?.detail || err.message);
+      setError(err.response?.data?.error || err.response?.data?.detail || err.message);
     }
     setLoading(false);
   };
@@ -89,7 +89,7 @@ const TelegramApp = () => {
       // Refresh videos after a delay to get new ones
       setTimeout(() => fetchVideos(), 3000);
     } catch (err) {
-      setError(err.response?.data?.detail || err.message);
+      setError(err.response?.data?.error || err.response?.data?.detail || err.message);
     }
     setLoading(false);
   };
