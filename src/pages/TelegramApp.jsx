@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { telegramService } from '../api/api';
-import './TelegramApp.css'; // Optional CSS for styling
 
 const TelegramApp = () => {
   const [phone, setPhone] = useState('');
