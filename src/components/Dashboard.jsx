@@ -7,7 +7,7 @@ import { notificationService } from '../api/api';
 
 export default function Dashboard({ videos }) {
   const [notifications, setNotifications] = useState([]);
-  
+
   useEffect(() => {
     const fetchNotifs = async () => {
       try {
@@ -28,13 +28,14 @@ export default function Dashboard({ videos }) {
       console.error(err);
     }
   };
+  // test
 
-  const total            = videos.length;
-  const completedVideos  = videos.filter(v => v.completed);
-  const completed        = completedVideos.length;
-  const remaining        = total - completed;
-  const progress         = total === 0 ? 0 : Math.round((completed / total) * 100);
-  const totalWatchSecs   = completedVideos.reduce((a, v) => a + (Number(v.duration) || 0), 0);
+  const total = videos.length;
+  const completedVideos = videos.filter(v => v.completed);
+  const completed = completedVideos.length;
+  const remaining = total - completed;
+  const progress = total === 0 ? 0 : Math.round((completed / total) * 100);
+  const totalWatchSecs = completedVideos.reduce((a, v) => a + (Number(v.duration) || 0), 0);
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
@@ -112,8 +113,8 @@ export default function Dashboard({ videos }) {
             Securely connect your Telegram account and sync videos directly from your private channels or groups right into Course Buddy!
           </p>
         </div>
-        <Link 
-          to="/telegram-sync" 
+        <Link
+          to="/telegram-sync"
           className="btn-primary w-full md:w-auto px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm shadow-blue-500/20 bg-blue-500 hover:bg-blue-600 border-none"
         >
           <Video size={18} /> Connect Telegram
@@ -132,14 +133,14 @@ export default function Dashboard({ videos }) {
             </span>
           )}
         </div>
-        
+
         <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
           {notifications.length === 0 ? (
             <p className="text-slate-500 text-sm italic">No notifications yet.</p>
           ) : (
             notifications.map(n => (
-              <div 
-                key={n._id} 
+              <div
+                key={n._id}
                 className={`p-4 rounded-2xl border transition ${n.isRead ? 'bg-white/50 border-slate-100 dark:bg-slate-800/30 dark:border-slate-800 opacity-75' : 'bg-orange-50 border-orange-200 dark:bg-orange-900/20 dark:border-orange-800'}`}
               >
                 <div className="flex justify-between items-start gap-4">
@@ -151,7 +152,7 @@ export default function Dashboard({ videos }) {
                     </span>
                   </div>
                   {!n.isRead && (
-                    <button 
+                    <button
                       onClick={() => handleMarkRead(n._id)}
                       className="text-xs bg-white dark:bg-slate-700 font-bold px-3 py-1 rounded-full shadow-sm hover:bg-slate-100 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-200"
                     >
