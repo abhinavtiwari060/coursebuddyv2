@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
+import axios from 'axios';
 
 // Models
 import User from './models/User.js';
@@ -805,19 +806,16 @@ const PY_SERVICE_URL = process.env.PY_SERVICE_URL || 'http://localhost:8000';
 app.post('/api/telegram/connect', authMiddleware, async (req, res) => {
   try {
     const { phone } = req.body;
-    const response = await fetch(`${PY_SERVICE_URL}/api/auth/send_code`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: req.user.id.toString(), phone })
+    const response = await axios.post(`${PY_SERVICE_URL}/api/auth/send_code`, {
+      user_id: req.user.id.toString(),
+      phone
     });
     
-    if (!response.ok) {
-      const data = await response.json();
-      return res.status(response.status).json(data);
-    }
-    const data = await response.json();
-    res.json(data);
+    res.json(response.data);
   } catch (err) {
+    if (err.response) {
+      return res.status(err.response.status).json(err.response.data);
+    }
     res.status(500).json({ error: err.message });
   }
 });
@@ -825,39 +823,33 @@ app.post('/api/telegram/connect', authMiddleware, async (req, res) => {
 app.post('/api/telegram/verify', authMiddleware, async (req, res) => {
   try {
     const { phone, phone_code_hash, code, session_string } = req.body;
-    const response = await fetch(`${PY_SERVICE_URL}/api/auth/verify_code`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_id: req.user.id.toString(),
-        phone,
-        phone_code_hash,
-        code,
-        session_string
-      })
+    const response = await axios.post(`${PY_SERVICE_URL}/api/auth/verify_code`, {
+      user_id: req.user.id.toString(),
+      phone,
+      phone_code_hash,
+      code,
+      session_string
     });
     
-    if (!response.ok) {
-      const data = await response.json();
-      return res.status(response.status).json(data);
-    }
-    const data = await response.json();
-    res.json(data);
+    res.json(response.data);
   } catch (err) {
+    if (err.response) {
+      return res.status(err.response.status).json(err.response.data);
+    }
     res.status(500).json({ error: err.message });
   }
 });
 
 app.get('/api/telegram/channels', authMiddleware, async (req, res) => {
   try {
-    const response = await fetch(`${PY_SERVICE_URL}/api/channels?user_id=${req.user.id}`);
-    if (!response.ok) {
-      const data = await response.json();
-      return res.status(response.status).json(data);
-    }
-    const data = await response.json();
-    res.json(data);
+    const response = await axios.get(`${PY_SERVICE_URL}/api/channels`, {
+      params: { user_id: req.user.id.toString() }
+    });
+    res.json(response.data);
   } catch (err) {
+    if (err.response) {
+      return res.status(err.response.status).json(err.response.data);
+    }
     res.status(500).json({ error: err.message });
   }
 });
@@ -865,23 +857,17 @@ app.get('/api/telegram/channels', authMiddleware, async (req, res) => {
 app.post('/api/telegram/sync', authMiddleware, async (req, res) => {
   try {
     const { channel_id } = req.body;
-    const response = await fetch(`${PY_SERVICE_URL}/api/sync`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_id: req.user.id.toString(),
-        channel_id: parseInt(channel_id),
-        limit: 50 // configure appropriately
-      })
+    const response = await axios.post(`${PY_SERVICE_URL}/api/sync`, {
+      user_id: req.user.id.toString(),
+      channel_id: parseInt(channel_id),
+      limit: 50 // configure appropriately
     });
     
-    if (!response.ok) {
-      const data = await response.json();
-      return res.status(response.status).json(data);
-    }
-    const data = await response.json();
-    res.json(data);
+    res.json(response.data);
   } catch (err) {
+    if (err.response) {
+      return res.status(err.response.status).json(err.response.data);
+    }
     res.status(500).json({ error: err.message });
   }
 });
