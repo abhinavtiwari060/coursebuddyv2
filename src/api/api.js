@@ -154,5 +154,16 @@ export const settingsService = {
   getSettings: () => api.get("/api/settings").then((r) => r.data),
 };
 
+// ── Telegram Service ───────────────────────
+export const telegramService = {
+  connect: (phone) => api.post("/api/telegram/connect", { phone }).then((r) => r.data),
+  verify: (data) => api.post("/api/telegram/verify", data).then((r) => r.data),
+  getChannels: () => api.get("/api/telegram/channels").then((r) => r.data),
+  syncChannel: (channel_id) => api.post("/api/telegram/sync", { channel_id }).then((r) => r.data),
+  getVideos: () => api.get("/api/telegram/videos").then((r) => r.data),
+  // stream url doesn't need an api call, it just needs the url construction
+  getStreamUrl: (id) => `${API_URL}/api/telegram/videos/${id}/stream`,
+};
+
 // Default export
 export default api;

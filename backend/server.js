@@ -17,6 +17,10 @@ import BugReport from './models/BugReport.js';
 import Notification from './models/Notification.js';
 import admin from 'firebase-admin';
 
+// Telegram Models
+import TelegramSession from './models/TelegramSession.js';
+import TelegramVideo from './models/TelegramVideo.js';
+
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -790,6 +794,144 @@ app.get('/api/admin/leaderboard', authMiddleware, adminMiddleware, async (req, r
 
     leaderboard.sort((a, b) => b.totalWatchTime - a.totalWatchTime);
     res.json(leaderboard);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Telegram Integration Routes ─────────────────────
+const PY_SERVICE_URL = process.env.PY_SERVICE_URL || 'http://localhost:8000';
+
+app.post('/api/telegram/connect', authMiddleware, async (req, res) => {
+  try {
+    const { phone } = req.body;
+    const response = await fetch(`${PY_SERVICE_URL}/api/auth/send_code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: req.user.id.toString(), phone })
+    });
+    
+    if (!response.ok) {
+      const data = await response.json();
+      return res.status(response.status).json(data);
+    }
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/telegram/verify', authMiddleware, async (req, res) => {
+  try {
+    const { phone, phone_code_hash, code, session_string } = req.body;
+    const response = await fetch(`${PY_SERVICE_URL}/api/auth/verify_code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: req.user.id.toString(),
+        phone,
+        phone_code_hash,
+        code,
+        session_string
+      })
+    });
+    
+    if (!response.ok) {
+      const data = await response.json();
+      return res.status(response.status).json(data);
+    }
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/telegram/channels', authMiddleware, async (req, res) => {
+  try {
+    const response = await fetch(`${PY_SERVICE_URL}/api/channels?user_id=${req.user.id}`);
+    if (!response.ok) {
+      const data = await response.json();
+      return res.status(response.status).json(data);
+    }
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/telegram/sync', authMiddleware, async (req, res) => {
+  try {
+    const { channel_id } = req.body;
+    const response = await fetch(`${PY_SERVICE_URL}/api/sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: req.user.id.toString(),
+        channel_id: parseInt(channel_id),
+        limit: 50 // configure appropriately
+      })
+    });
+    
+    if (!response.ok) {
+      const data = await response.json();
+      return res.status(response.status).json(data);
+    }
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/telegram/videos', authMiddleware, async (req, res) => {
+  try {
+    const videos = await TelegramVideo.find({ userId: req.user.id.toString() }).sort({ timestamp: -1 });
+    res.json(videos);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Secure endpoint to stream the locally downloaded video
+app.get('/api/telegram/videos/:id/stream', authMiddleware, async (req, res) => {
+  try {
+    const video = await TelegramVideo.findOne({ _id: req.params.id, userId: req.user.id.toString() });
+    if (!video) return res.status(404).json({ error: 'Video not found' });
+
+    const videoPath = video.filePath;
+    if (!fs.existsSync(videoPath)) {
+      return res.status(404).json({ error: 'Video file missing on server' });
+    }
+
+    const stat = fs.statSync(videoPath);
+    const fileSize = stat.size;
+    const range = req.headers.range;
+
+    if (range) {
+      const parts = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunksize = (end - start) + 1;
+      const file = fs.createReadStream(videoPath, { start, end });
+      const head = {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunksize,
+        'Content-Type': 'video/mp4',
+      };
+      res.writeHead(206, head);
+      file.pipe(res);
+    } else {
+      const head = {
+        'Content-Length': fileSize,
+        'Content-Type': 'video/mp4',
+      };
+      res.writeHead(200, head);
+      fs.createReadStream(videoPath).pipe(res);
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

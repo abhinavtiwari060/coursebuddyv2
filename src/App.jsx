@@ -12,6 +12,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import Profile from './pages/Profile';
 import Leaderboard from './pages/Leaderboard';
 import Community from './pages/Community';
+import TelegramApp from './pages/TelegramApp';
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
@@ -148,6 +149,14 @@ export default function App() {
               <FeatureGate feature="canUseCommunity">
                 <Community />
               </FeatureGate>
+            } 
+          />
+          <Route 
+            path="/telegram-sync" 
+            element={
+              <ProtectedRoute>
+                <TelegramApp />
+              </ProtectedRoute>
             } 
           />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
