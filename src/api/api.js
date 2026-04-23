@@ -157,7 +157,7 @@ export const settingsService = {
 // ── Telegram Service ───────────────────────
 export const telegramService = {
   getStatus: () => api.get("/api/telegram/status").then(r => r.data),
-  getSyncStatus: () => api.get("/api/telegram/sync-status").then(r => r.data),
+  getSyncStatus: () => api.get("/api/telegram/sync-status", { params: { _t: Date.now() } }).then(r => r.data),
   connect: (phone) => api.post("/api/telegram/connect", { phone }).then((r) => r.data),
   verify: (data) => api.post("/api/telegram/verify", data).then((r) => r.data),
   getChannels: () => api.get("/api/telegram/channels").then((r) => r.data),

@@ -912,8 +912,14 @@ app.get('/api/telegram/sync-status', authMiddleware, async (req, res) => {
     const pyUrl = getPyServiceUrl();
     if (!pyUrl) return res.status(503).json({ error: "Telegram Integration is not configured." });
 
+    // Force explicitly bypass all caches
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+
     const response = await axios.get(`${pyUrl}/api/sync/status`, {
-      params: { user_id: req.user.id.toString() }
+      params: { user_id: req.user.id.toString(), t: Date.now() }
     });
     res.json(response.data);
   } catch (err) {
