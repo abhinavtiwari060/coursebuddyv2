@@ -892,7 +892,7 @@ app.post('/api/telegram/sync', authMiddleware, async (req, res) => {
     const response = await axios.post(`${pyUrl}/api/sync`, {
       user_id: req.user.id.toString(),
       channel_id: parseInt(channel_id),
-      limit: 50 // configure appropriately
+      limit: 100 // Increased from 50 to give real-time loader more beef
     });
     
     res.json(response.data);
@@ -904,6 +904,20 @@ app.post('/api/telegram/sync', authMiddleware, async (req, res) => {
     }
     console.error(err.stack);
     res.status(500).json({ error: "Failed to sync Telegram channel", detail: err.message });
+  }
+});
+
+app.get('/api/telegram/sync-status', authMiddleware, async (req, res) => {
+  try {
+    const pyUrl = getPyServiceUrl();
+    if (!pyUrl) return res.status(503).json({ error: "Telegram Integration is not configured." });
+
+    const response = await axios.get(`${pyUrl}/api/sync/status`, {
+      params: { user_id: req.user.id.toString() }
+    });
+    res.json(response.data);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch Telegram sync status" });
   }
 });
 

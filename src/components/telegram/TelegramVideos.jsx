@@ -2,17 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { RefreshCw, Search, Phone, History, Video as VideoIcon } from 'lucide-react';
 import { telegramService } from '../../api/api';
 import TelegramApp from '../../pages/TelegramApp'; // Legacy OTP widget
-import TelegramVideoCard from './TelegramVideoCard';
+import TelegramVideoRow from './TelegramVideoRow';
 import TelegramPlayer from './TelegramPlayer';
+import TelegramSyncProgress from './TelegramSyncProgress';
 
 export default function TelegramVideos() {
   const [status, setStatus] = useState(null);
   const [videos, setVideos] = useState([]);
+  const [channels, setChannels] = useState([]);
+  const [selectedChannel, setSelectedChannel] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
   const [search, setSearch] = useState('');
   const [activePlayerVideo, setActivePlayerVideo] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const listRef = React.useRef(null);
 
   useEffect(() => {
     fetchStatus();
@@ -25,6 +30,7 @@ export default function TelegramVideos() {
       setStatus(res);
       if (res.connected) {
         fetchVideos();
+        fetchChannels();
       }
     } catch (err) {
       setError("Failed to reach Telegram Service. It may be offline.");
@@ -39,6 +45,40 @@ export default function TelegramVideos() {
       setVideos(vids);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const fetchChannels = async () => {
+    try {
+      const chans = await telegramService.getChannels();
+      setChannels(chans);
+      if (chans.length > 0) setSelectedChannel(chans[0].id);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleRefresh = async () => {
+    await fetchVideos();
+    if (listRef.current) {
+      listRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  // Sync completion handler
+  const handleSyncComplete = () => {
+    setIsSyncing(false);
+    handleRefresh();
+  };
+
+  const executeManualSync = async () => {
+    if (!selectedChannel) return;
+    try {
+      setIsSyncing(true);
+      await telegramService.syncChannel(selectedChannel);
+    } catch (err) {
+      console.error("Manual sync failed to start", err);
+      setIsSyncing(false);
     }
   };
 
@@ -106,7 +146,7 @@ export default function TelegramVideos() {
       </div>
 
       {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 sticky top-16 z-20 bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-md p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
         <div className="relative w-full sm:w-96">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input 
@@ -114,18 +154,43 @@ export default function TelegramVideos() {
             placeholder="Search captions or channels..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-white/60 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-2xl pl-11 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow"
+            className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-11 pr-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 transition-colors"
           />
         </div>
-        <button 
-          onClick={fetchVideos}
-          className="btn-secondary rounded-xl px-5 py-2.5 text-sm font-bold flex items-center gap-2"
-        >
-          <RefreshCw size={16} /> Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          <select 
+            className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 max-w-[200px] truncate outline-none"
+            value={selectedChannel}
+            onChange={(e) => setSelectedChannel(e.target.value)}
+            disabled={isSyncing || channels.length === 0}
+          >
+            {channels.length === 0 ? <option value="">Loading channels...</option> : null}
+            {channels.map(c => (
+              <option key={c.id} value={c.id}>{c.title}</option>
+            ))}
+          </select>
+          <button 
+            disabled={isSyncing || !selectedChannel}
+            onClick={executeManualSync}
+            className="btn-primary rounded-xl px-5 py-2.5 text-sm font-bold flex items-center gap-2 disabled:opacity-50 whitespace-nowrap"
+          >
+            {isSyncing ? "Syncing..." : "Manual Sync"}
+          </button>
+          <button 
+            disabled={isSyncing}
+            onClick={handleRefresh}
+            className="btn-secondary rounded-xl px-5 py-2.5 text-sm font-bold flex items-center gap-2 disabled:opacity-50"
+          >
+            <RefreshCw size={16} /> Refresh
+          </button>
+        </div>
       </div>
+      
+      {/* Progress Polling Component */}
+      {isSyncing && <TelegramSyncProgress onComplete={handleSyncComplete} />}
 
-      {/* Grid */}
+      {/* List */}
+      <div ref={listRef} className="pt-2" />
       {filtered.length === 0 ? (
          <div className="py-20 text-center flex flex-col items-center justify-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl">
            <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-2xl flex items-center justify-center mb-4">
@@ -135,9 +200,9 @@ export default function TelegramVideos() {
            {search && <p className="text-slate-400 text-sm mt-1">Try clearing your search filters</p>}
          </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        <div className="flex flex-col gap-4">
           {filtered.map(video => (
-            <TelegramVideoCard key={video.video_id} video={video} onPlay={setActivePlayerVideo} />
+            <TelegramVideoRow key={video.video_id} video={video} onPlay={setActivePlayerVideo} />
           ))}
         </div>
       )}

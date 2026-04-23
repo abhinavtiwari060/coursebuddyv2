@@ -165,6 +165,22 @@ class SyncRequest(BaseModel):
     channel_id: int
     limit: int = 50
 
+# In-memory tracking for progress bar
+sync_status_cache = {}
+
+@app.get("/api/sync/status")
+async def get_sync_status(user_id: str):
+    if user_id in sync_status_cache:
+        return sync_status_cache[user_id]
+    return {
+        "syncing": False,
+        "total": 0,
+        "completed": 0,
+        "remaining": 0,
+        "percent": 0,
+        "current_video": ""
+    }
+
 @app.post("/api/sync")
 async def sync_channel(req: SyncRequest, background_tasks: BackgroundTasks):
     client = get_client(req.user_id)
@@ -179,7 +195,22 @@ async def sync_channel(req: SyncRequest, background_tasks: BackgroundTasks):
     
     async def perform_sync():
         try:
+            # Initialize tracker
+            sync_status_cache[req.user_id] = {
+                "syncing": True,
+                "total": 0,
+                "completed": 0,
+                "remaining": 0,
+                "percent": 0,
+                "current_video": "Fetching messages..."
+            }
+
             messages = await client.get_messages(req.channel_id, limit=req.limit)
+            video_messages = [msg for msg in messages if msg.video]
+            total_vids = len(video_messages)
+            
+            sync_status_cache[req.user_id]["total"] = total_vids
+            sync_status_cache[req.user_id]["remaining"] = total_vids
             
             # Fetch channel name properly
             entity = await client.get_entity(req.channel_id)
@@ -191,8 +222,8 @@ async def sync_channel(req: SyncRequest, background_tasks: BackgroundTasks):
                 {"$set": {"lastSync": asyncio.get_running_loop().time()}}
             )
 
-            for msg in messages:
-                if msg.video:
+            completed = 0
+            for msg in video_messages:
                     existing = telegram_videos_collection.find_one({
                         "user_id": req.user_id, 
                         "telegram_message_id": msg.id, 
@@ -203,7 +234,15 @@ async def sync_channel(req: SyncRequest, background_tasks: BackgroundTasks):
                         
                     attr = next((a for a in msg.video.attributes if isinstance(a, DocumentAttributeVideo)), None)
                     duration = attr.duration if attr else 0
+                    size_mb = msg.video.size / (1024 * 1024) if msg.video and hasattr(msg.video, 'size') else 0
                     
+                    vid_title = msg.message or f"Video {msg.id}"
+                    
+                    # Update cache state
+                    sync_status_cache[req.user_id].update({
+                        "current_video": vid_title[:50] + ("..." if len(vid_title)>50 else ""),
+                    })
+
                     vid_id = str(uuid.uuid4())
                     file_name = f"{req.channel_id}_{msg.id}.mp4"
                     file_path = os.path.join(downloads_dir, file_name)
@@ -226,17 +265,28 @@ async def sync_channel(req: SyncRequest, background_tasks: BackgroundTasks):
                         "user_id": req.user_id,
                         "channel_id": req.channel_id,
                         "channel_name": channel_name,
-                        "caption": msg.message or "Telegram Video",
+                        "caption": vid_title,
                         "file_path": file_path,
                         "file_name": file_name,
                         "thumbnail": thumb_path,
                         "telegram_link": link,
                         "upload_time": msg.date,
                         "duration": duration,
+                        "size_mb": round(size_mb, 2),
                         "sync_date": asyncio.get_running_loop().time()
                     })
+
+                completed += 1
+                sync_status_cache[req.user_id].update({
+                    "completed": completed,
+                    "remaining": total_vids - completed,
+                    "percent": int((completed / total_vids) * 100) if total_vids > 0 else 100
+                })
         except Exception as e:
             traceback.print_exc()
+        finally:
+            if req.user_id in sync_status_cache:
+                sync_status_cache[req.user_id]["syncing"] = False
 
     background_tasks.add_task(perform_sync)
     return {"success": True, "message": "Sync started in background"}
