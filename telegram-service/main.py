@@ -53,6 +53,7 @@ class VerifyCodeRequest(BaseModel):
     phone: str
     phone_code_hash: str
     code: str
+    session_string: str
 
 @app.post("/api/auth/send_code")
 async def send_code(req: SendCodeRequest):
@@ -70,8 +71,9 @@ async def send_code(req: SendCodeRequest):
         await client.disconnect()
 
 @app.post("/api/auth/verify_code")
-async def verify_code(req: VerifyCodeRequest, session_string: str = Body(..., embed=True)):
-    client = TelegramClient(StringSession(session_string), int(API_ID), API_HASH)
+async def verify_code(req: VerifyCodeRequest):
+    print("VERIFY ROUTE HIT. Payload:", req.dict())
+    client = TelegramClient(StringSession(req.session_string), int(API_ID), API_HASH)
     await client.connect()
     try:
         await client.sign_in(phone=req.phone, code=req.code, phone_code_hash=req.phone_code_hash)
@@ -98,9 +100,11 @@ async def verify_code(req: VerifyCodeRequest, session_string: str = Body(..., em
 
 @app.get("/api/channels")
 async def get_channels(user_id: str):
+    print(f"GET CHANNELS ROUTE HIT for user_id: {user_id}")
     client = get_client(user_id)
     if not client:
-        raise HTTPException(status_code=401, detail="No session found")
+        print("Error: No session found for user_id", user_id)
+        raise HTTPException(status_code=401, detail="No session found. Please re-authenticate.")
     
     if not client.is_connected():
         await client.connect()
@@ -117,6 +121,9 @@ async def get_channels(user_id: str):
                 })
         return channels
     except Exception as e:
+        import traceback
+        print("ERROR IN GET CHANNELS:")
+        traceback.print_exc()
         raise HTTPException(status_code=400, detail=str(e))
 
 class SyncRequest(BaseModel):

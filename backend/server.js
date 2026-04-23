@@ -840,6 +840,8 @@ app.post('/api/telegram/verify', authMiddleware, async (req, res) => {
     if (!pyUrl) return res.status(503).json({ error: "Telegram Integration is not configured.", detail: "PY_SERVICE_URL is missing." });
 
     const { phone, phone_code_hash, code, session_string } = req.body;
+    console.log("VERIFY PAYLOAD:", { phone, phone_code_hash, code, session_string });
+    
     const response = await axios.post(`${pyUrl}/api/auth/verify_code`, {
       user_id: req.user.id.toString(),
       phone,
@@ -847,6 +849,7 @@ app.post('/api/telegram/verify', authMiddleware, async (req, res) => {
       code,
       session_string
     });
+    console.log("VERIFY RESPONSE:", response.data);
     
     res.json(response.data);
   } catch (err) {

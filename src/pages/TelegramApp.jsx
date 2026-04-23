@@ -275,4 +275,45 @@ const TelegramApp = () => {
   );
 };
 
-export default TelegramApp;
+// ── Error Boundary Wrapper ────────────────────────────
+class TelegramErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("🔥 TelegramApp React Error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '2rem', maxWidth: '800px', margin: '0 auto', color: 'white' }}>
+          <h1 style={{ color: '#ef4444' }}>Something went wrong.</h1>
+          <p>The Telegram interface crashed. Please refresh the page and try again.</p>
+          <pre style={{ background: '#1f2937', padding: '1rem', borderRadius: '0.5rem', overflowX: 'auto', marginTop: '1rem' }}>
+            {this.state.error?.message || JSON.stringify(this.state.error)}
+          </pre>
+          <button onClick={() => window.location.reload()} style={{ marginTop: '1rem', padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', borderRadius: '0.5rem', border: 'none', cursor: 'pointer' }}>
+            Reload Page
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+export default function SafeTelegramApp() {
+  return (
+    <TelegramErrorBoundary>
+      <TelegramApp />
+    </TelegramErrorBoundary>
+  );
+}
