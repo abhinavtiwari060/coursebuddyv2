@@ -961,8 +961,27 @@ app.get('/api/telegram/health', async (req, res) => {
 
 app.get('/api/telegram/videos', authMiddleware, async (req, res) => {
   try {
-    const videos = await TelegramVideo.find({ user_id: req.user.id.toString() }).sort({ sync_date: -1 });
-    res.json(videos);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const query = { user_id: req.user.id.toString() };
+    
+    // Sort by sync_date DESC so newest videos show up correctly on append
+    const videos = await TelegramVideo.find(query)
+      .sort({ sync_date: -1 })
+      .skip(skip)
+      .limit(limit);
+      
+    const totalCount = await TelegramVideo.countDocuments(query);
+    const hasMore = skip + videos.length < totalCount;
+
+    res.json({
+      videos,
+      hasMore,
+      totalCount,
+      page
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

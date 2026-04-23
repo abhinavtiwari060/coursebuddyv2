@@ -162,7 +162,7 @@ export const telegramService = {
   verify: (data) => api.post("/api/telegram/verify", data).then((r) => r.data),
   getChannels: () => api.get("/api/telegram/channels").then((r) => r.data),
   syncChannel: (channel_id) => api.post("/api/telegram/sync", { channel_id }).then((r) => r.data),
-  getVideos: () => api.get("/api/telegram/videos").then((r) => r.data),
+  getVideos: (page = 1, limit = 10) => api.get("/api/telegram/videos", { params: { page, limit } }).then((r) => r.data),
   // stream url doesn't need an api call, it just needs the url construction
   getStreamUrl: (id) => `${API_URL}/api/telegram/videos/stream/${id}`,
 };

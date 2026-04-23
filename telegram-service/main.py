@@ -202,6 +202,8 @@ async def sync_channel(req: SyncRequest, background_tasks: BackgroundTasks):
                 "completed": 0,
                 "remaining": 0,
                 "percent": 0,
+                "current_batch": 0,
+                "total_batches": 0,
                 "current_video": "Fetching messages..."
             }
 
@@ -215,6 +217,7 @@ async def sync_channel(req: SyncRequest, background_tasks: BackgroundTasks):
             # Fetch channel name properly
             entity = await client.get_entity(req.channel_id)
             channel_name = getattr(entity, 'title', str(req.channel_id))
+            channel_username = getattr(entity, 'username', None)
             
             # Record latest sync
             telegram_sessions_collection.update_one(
@@ -222,66 +225,85 @@ async def sync_channel(req: SyncRequest, background_tasks: BackgroundTasks):
                 {"$set": {"lastSync": asyncio.get_running_loop().time()}}
             )
 
+            # Chunk into batches of 10
+            batch_size = 10
+            batches = [video_messages[i:i + batch_size] for i in range(0, total_vids, batch_size)]
+            sync_status_cache[req.user_id]["total_batches"] = len(batches)
+
             completed = 0
-            for msg in video_messages:
-                existing = telegram_videos_collection.find_one({
-                    "user_id": req.user_id, 
-                    "telegram_message_id": msg.id, 
-                    "channel_id": req.channel_id
-                })
-                if existing:
-                    continue
+            for batch_num, batch in enumerate(batches, 1):
+                sync_status_cache[req.user_id]["current_batch"] = batch_num
+                
+                for msg in batch:
+                    existing = telegram_videos_collection.find_one({
+                        "user_id": req.user_id, 
+                        "telegram_message_id": msg.id, 
+                        "channel_id": req.channel_id
+                    })
+                    if existing:
+                        continue
+                        
+                    attr = next((a for a in msg.video.attributes if isinstance(a, DocumentAttributeVideo)), None)
+                    duration = attr.duration if attr else 0
+                    size_mb = msg.video.size / (1024 * 1024) if msg.video and hasattr(msg.video, 'size') else 0
                     
-                attr = next((a for a in msg.video.attributes if isinstance(a, DocumentAttributeVideo)), None)
-                duration = attr.duration if attr else 0
-                size_mb = msg.video.size / (1024 * 1024) if msg.video and hasattr(msg.video, 'size') else 0
-                
-                vid_title = msg.message or f"Video {msg.id}"
-                
-                # Update cache state
-                sync_status_cache[req.user_id].update({
-                    "current_video": vid_title[:50] + ("..." if len(vid_title)>50 else ""),
-                })
+                    vid_title = msg.message or f"Video {msg.id}"
+                    
+                    # Update cache state
+                    sync_status_cache[req.user_id].update({
+                        "current_video": vid_title[:50] + ("..." if len(vid_title)>50 else ""),
+                    })
 
-                vid_id = str(uuid.uuid4())
-                file_name = f"{req.channel_id}_{msg.id}.mp4"
-                file_path = os.path.join(downloads_dir, file_name)
-                
-                thumb_name = f"{req.channel_id}_{msg.id}_thumb.jpg"
-                thumb_path = os.path.join(downloads_dir, thumb_name)
-                
-                # Download video and thumbnail safely
-                await client.download_media(msg, file=file_path)
-                try:
-                    await client.download_media(msg, file=thumb_path, thumb=-1)
-                except:
-                    thumb_path = "" # ignore thumbnail extraction bugs
+                    vid_id = str(uuid.uuid4())
+                    file_name = f"{req.channel_id}_{msg.id}.mp4"
+                    file_path = os.path.join(downloads_dir, file_name)
+                    
+                    thumb_name = f"{req.channel_id}_{msg.id}_thumb.jpg"
+                    thumb_path = os.path.join(downloads_dir, thumb_name)
+                    
+                    # Download video and thumbnail safely
+                    await client.download_media(msg, file=file_path)
+                    try:
+                        await client.download_media(msg, file=thumb_path, thumb=-1)
+                    except:
+                        thumb_path = ""
 
-                link = f"https://t.me/c/{str(req.channel_id).replace('-100', '')}/{msg.id}"
-                
-                telegram_videos_collection.insert_one({
-                    "video_id": vid_id,
-                    "telegram_message_id": msg.id,
-                    "user_id": req.user_id,
-                    "channel_id": req.channel_id,
-                    "channel_name": channel_name,
-                    "caption": vid_title,
-                    "file_path": file_path,
-                    "file_name": file_name,
-                    "thumbnail": thumb_path,
-                    "telegram_link": link,
-                    "upload_time": msg.date,
-                    "duration": duration,
-                    "size_mb": round(size_mb, 2),
-                    "sync_date": asyncio.get_running_loop().time()
-                })
+                    if channel_username:
+                        link = f"tg://resolve?domain={channel_username}&post={msg.id}"
+                        fallback = f"https://t.me/{channel_username}/{msg.id}"
+                    else:
+                        stripped_id = str(req.channel_id).replace('-100', '')
+                        link = f"https://t.me/c/{stripped_id}/{msg.id}"
+                        fallback = link
+                    
+                    telegram_videos_collection.insert_one({
+                        "video_id": vid_id,
+                        "telegram_message_id": msg.id,
+                        "user_id": req.user_id,
+                        "channel_id": req.channel_id,
+                        "channel_name": channel_name,
+                        "channel_username": channel_username,
+                        "caption": vid_title,
+                        "file_path": file_path,
+                        "file_name": file_name,
+                        "thumbnail": thumb_path,
+                        "telegram_link": link,
+                        "telegram_fallback": fallback,
+                        "upload_time": msg.date,
+                        "duration": duration,
+                        "size_mb": round(size_mb, 2),
+                        "sync_date": asyncio.get_running_loop().time()
+                    })
 
-                completed += 1
-                sync_status_cache[req.user_id].update({
-                    "completed": completed,
-                    "remaining": total_vids - completed,
-                    "percent": int((completed / total_vids) * 100) if total_vids > 0 else 100
-                })
+                    completed += 1
+                    sync_status_cache[req.user_id].update({
+                        "completed": completed,
+                        "remaining": total_vids - completed,
+                        "percent": int((completed / total_vids) * 100) if total_vids > 0 else 100
+                    })
+                
+                # Small yield after batch to prevent starving the event loop
+                await asyncio.sleep(0.1)
         except Exception as e:
             traceback.print_exc()
         finally:

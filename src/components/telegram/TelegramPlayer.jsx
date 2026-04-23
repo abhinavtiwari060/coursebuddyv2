@@ -7,11 +7,15 @@ export default function TelegramPlayer({ video, onClose }) {
 
   // Prevent scrolling when modal is open
   useEffect(() => {
-    document.body.style.overflow = 'hidden';
+    if (video) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'auto';
+    }
     return () => {
       document.body.style.overflow = 'auto';
     };
-  }, []);
+  }, [video]);
 
   if (!video) return null;
 

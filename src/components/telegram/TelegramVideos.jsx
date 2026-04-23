@@ -17,6 +17,13 @@ export default function TelegramVideos() {
   const [search, setSearch] = useState('');
   const [activePlayerVideo, setActivePlayerVideo] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  
+  // Pagination State
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  
+  const observerRef = React.useRef(null);
   const listRef = React.useRef(null);
 
   useEffect(() => {
@@ -39,14 +46,55 @@ export default function TelegramVideos() {
     }
   };
 
-  const fetchVideos = async () => {
+  const fetchVideos = async (pageToLoad = 1, append = false) => {
     try {
-      const vids = await telegramService.getVideos();
-      setVideos(vids);
+      if (pageToLoad === 1) setLoading(true);
+      else setLoadingMore(true);
+      
+      const res = await telegramService.getVideos(pageToLoad, 10);
+      
+      if (append) {
+        setVideos(prev => [...prev, ...res.videos]);
+      } else {
+        setVideos(res.videos);
+      }
+      
+      setHasMore(res.hasMore);
+      setPage(res.page);
     } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  };
+
+  const handleBatchCompleted = async () => {
+    // Just fetch the first page and merge uniquely on top.
+    try {
+      const res = await telegramService.getVideos(1, 10);
+      setVideos(prev => {
+        const existingIds = new Set(prev.map(v => v.video_id));
+        const newVids = res.videos.filter(v => !existingIds.has(v.video_id));
+        return [...newVids, ...prev];
+      });
+    } catch(err) {
       console.error(err);
     }
   };
+
+  const handleObserver = (entries) => {
+    const target = entries[0];
+    if (target.isIntersecting && hasMore && !loadingMore && status?.connected) {
+      fetchVideos(page + 1, true);
+    }
+  };
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(handleObserver, { threshold: 1.0 });
+    if (observerRef.current) observer.observe(observerRef.current);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, page, status]);
 
   const fetchChannels = async () => {
     try {
@@ -159,12 +207,12 @@ export default function TelegramVideos() {
         </div>
         <div className="flex items-center gap-3">
           <select 
-            className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 max-w-[200px] truncate outline-none"
+            className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 w-32 md:w-48 truncate outline-none"
             value={selectedChannel}
             onChange={(e) => setSelectedChannel(e.target.value)}
             disabled={isSyncing || channels.length === 0}
           >
-            {channels.length === 0 ? <option value="">Loading channels...</option> : null}
+            {channels.length === 0 ? <option value="">Loading...</option> : null}
             {channels.map(c => (
               <option key={c.id} value={c.id}>{c.title}</option>
             ))}
@@ -172,22 +220,24 @@ export default function TelegramVideos() {
           <button 
             disabled={isSyncing || !selectedChannel}
             onClick={executeManualSync}
-            className="btn-primary rounded-xl px-5 py-2.5 text-sm font-bold flex items-center gap-2 disabled:opacity-50 whitespace-nowrap"
+            className="btn-primary rounded-xl px-4 sm:px-5 py-2.5 text-sm font-bold flex items-center gap-2 disabled:opacity-50 whitespace-nowrap"
           >
             {isSyncing ? "Syncing..." : "Manual Sync"}
           </button>
           <button 
-            disabled={isSyncing}
+            disabled={isSyncing || loading}
             onClick={handleRefresh}
-            className="btn-secondary rounded-xl px-5 py-2.5 text-sm font-bold flex items-center gap-2 disabled:opacity-50"
+            className="btn-secondary rounded-xl px-4 sm:px-5 py-2.5 text-sm font-bold flex items-center gap-2 disabled:opacity-50"
           >
-            <RefreshCw size={16} /> Refresh
+            <RefreshCw size={16} className={loading ? "animate-spin" : ""} /> Refresh
           </button>
         </div>
       </div>
       
-      {/* Progress Polling Component */}
-      {isSyncing && <TelegramSyncProgress onComplete={handleSyncComplete} />}
+      {/* Progress Polling Component - Stuck to the top so you can scroll list */}
+      <div className="sticky top-[140px] z-10 w-full">
+         {isSyncing && <TelegramSyncProgress onComplete={handleSyncComplete} onBatchComplete={handleBatchCompleted} />}
+      </div>
 
       {/* List */}
       <div ref={listRef} className="pt-2" />
@@ -200,10 +250,20 @@ export default function TelegramVideos() {
            {search && <p className="text-slate-400 text-sm mt-1">Try clearing your search filters</p>}
          </div>
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4 max-w-5xl mx-auto w-full pb-10">
           {filtered.map(video => (
             <TelegramVideoRow key={video.video_id} video={video} onPlay={setActivePlayerVideo} />
           ))}
+          
+          {/* Infinite Scroll Trigger */}
+          {hasMore && (
+            <div ref={observerRef} className="w-full flex items-center justify-center p-6">
+               <div className="w-8 h-8 rounded-full border-4 border-slate-200 border-t-indigo-500 animate-spin"></div>
+            </div>
+          )}
+          {!hasMore && filtered.length > 10 && (
+             <div className="text-center p-6 text-slate-500 font-medium">You've reached the end of your library.</div>
+          )}
         </div>
       )}
 
