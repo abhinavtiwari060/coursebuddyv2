@@ -19,6 +19,21 @@ const TelegramApp = () => {
   // Custom video player state
   const [playingVideoId, setPlayingVideoId] = useState(null);
 
+  // Safely extract error messages from backend responses
+  const getErrorMessage = (err) => {
+    const detail = err.response?.data?.detail;
+    const errorData = err.response?.data?.error;
+    
+    if (Array.isArray(detail)) {
+      return detail.map(d => `${d.loc.join('.')}: ${d.msg}`).join(', ');
+    }
+    if (typeof detail === 'string') return detail;
+    if (typeof errorData === 'string') return errorData;
+    if (typeof errorData === 'object') return JSON.stringify(errorData);
+    
+    return err.message || 'An unknown error occurred';
+  };
+
   useEffect(() => {
     // Try to load videos initially (if already connected)
     fetchVideos();
@@ -47,33 +62,50 @@ const TelegramApp = () => {
   };
 
   const handleSendCode = async () => {
+    if (!phone) {
+      setError("Phone number is required");
+      return;
+    }
     setLoading(true);
     setError('');
     try {
+      console.log("Sending OTP for phone:", phone);
       const res = await telegramService.connect(phone);
+      console.log("Connect response:", res);
+      
       setPhoneCodeHash(res.phone_code_hash);
       setSessionString(res.session_string);
       setStep(2);
     } catch (err) {
-      setError(err.response?.data?.error || err.response?.data?.detail || err.message);
+      setError(getErrorMessage(err));
     }
     setLoading(false);
   };
 
   const handleVerifyCode = async () => {
+    if (!phone || !code || !phoneCodeHash) {
+      setError("Missing required fields (phone, code, or phone hash). Please resend OTP.");
+      return;
+    }
+    
     setLoading(true);
     setError('');
+    
+    console.log("Verifying OTP with payload:", { phone, code, phone_code_hash: phoneCodeHash, session_string: sessionString });
+    
     try {
-      await telegramService.verify({
+      const res = await telegramService.verify({
         phone,
         phone_code_hash: phoneCodeHash,
         code,
         session_string: sessionString
       });
+      console.log("Verify response:", res);
+      
       setStep(3);
       fetchChannelsSilently(); // Load channels after verification
     } catch (err) {
-      setError(err.response?.data?.error || err.response?.data?.detail || err.message);
+      setError(getErrorMessage(err));
     }
     setLoading(false);
   };
@@ -89,7 +121,7 @@ const TelegramApp = () => {
       // Refresh videos after a delay to get new ones
       setTimeout(() => fetchVideos(), 3000);
     } catch (err) {
-      setError(err.response?.data?.error || err.response?.data?.detail || err.message);
+      setError(getErrorMessage(err));
     }
     setLoading(false);
   };
@@ -108,7 +140,12 @@ const TelegramApp = () => {
         Telegram Video Sync
       </h1>
       
-      {error && <div style={{ background: '#ef4444', color: 'white', padding: '0.5rem', borderRadius: '0.5rem', marginBottom: '1rem' }}>{error}</div>}
+      {error && (
+        <div style={{ background: '#ef4444', color: 'white', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem', wordBreak: 'break-word' }}>
+          <strong>Error: </strong>
+          {typeof error === 'object' ? JSON.stringify(error) : error}
+        </div>
+      )}
       {successMsg && <div style={{ background: '#10b981', color: 'white', padding: '0.5rem', borderRadius: '0.5rem', marginBottom: '1rem' }}>{successMsg}</div>}
 
       {/* Connection Wizard */}
