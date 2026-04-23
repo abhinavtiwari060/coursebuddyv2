@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import AdminUserLimit from '../components/AdminUserLimit';
 import SuggestedPlaylistsAdmin from '../components/SuggestedPlaylistsAdmin';
+import AdminCourseCreator from '../components/AdminCourseCreator';
 
 function getInitials(name = '') {
   return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
@@ -19,6 +20,7 @@ function getInitials(name = '') {
 const TABS = [
   { id: 'users', label: 'Users', icon: <Users size={16} /> },
   { id: 'leaderboard', label: 'Leaderboard', icon: <Trophy size={16} /> },
+  { id: 'courses', label: 'Course Creator', icon: <BookOpen size={16} /> },
   { id: 'bugs', label: 'Bug Reports', icon: <Bug size={16} /> },
   { id: 'notifications', label: 'Settings & Push', icon: <SettingsIcon size={16} /> },
 ];
@@ -680,6 +682,13 @@ export default function AdminDashboard() {
                 ))
               )}
             </div>
+          </div>
+        )}
+
+        {/* Course Creator Tab */}
+        {activeTab === 'courses' && (
+          <div className="max-w-4xl mx-auto">
+            <AdminCourseCreator />
           </div>
         )}
 

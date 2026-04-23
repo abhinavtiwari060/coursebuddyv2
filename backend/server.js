@@ -912,6 +912,188 @@ app.get('/api/admin/leaderboard', authMiddleware, adminMiddleware, async (req, r
   }
 });
 
+// ── Admin Course Creator Routes ─────────────────────
+
+/**
+ * GET /api/admin/youtube/playlist?url=...
+ * Fetches all video details from a YouTube playlist via the Data API v3.
+ * Requires YOUTUBE_API_KEY in .env
+ */
+app.get('/api/admin/youtube/playlist', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { url } = req.query;
+    if (!url) return res.status(400).json({ error: 'Playlist URL required' });
+
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: 'YOUTUBE_API_KEY is not configured on the server.' });
+
+    // Extract playlist ID from various URL formats
+    let playlistId = null;
+    try {
+      const u = new URL(url);
+      playlistId = u.searchParams.get('list');
+      if (!playlistId && url.startsWith('PL')) playlistId = url.trim(); // raw ID
+    } catch {
+      playlistId = url.trim(); // treat as raw playlist ID
+    }
+    if (!playlistId) return res.status(400).json({ error: 'Could not extract playlist ID from URL' });
+
+    // Helper: parse ISO 8601 duration → total seconds
+    const parseDuration = (iso) => {
+      if (!iso) return 0;
+      const match = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+      if (!match) return 0;
+      const [, h = 0, m = 0, s = 0] = match;
+      return Number(h) * 3600 + Number(m) * 60 + Number(s);
+    };
+
+    // Step 1: Get playlist metadata + all item videoIds (paginated)
+    let videos = [];
+    let nextPageToken = '';
+    let playlistTitle = '';
+
+    do {
+      const listRes = await axios.get('https://www.googleapis.com/youtube/v3/playlistItems', {
+        params: {
+          part: 'snippet,contentDetails',
+          playlistId,
+          maxResults: 50,
+          pageToken: nextPageToken || undefined,
+          key: apiKey,
+        }
+      });
+      const data = listRes.data;
+      if (!playlistTitle && data.items?.[0]?.snippet?.channelTitle) {
+        playlistTitle = data.items[0].snippet.playlistId || '';
+      }
+      nextPageToken = data.nextPageToken || '';
+
+      for (const item of data.items || []) {
+        const videoId = item.contentDetails?.videoId;
+        const snippet = item.snippet;
+        if (!videoId || snippet?.title === 'Deleted video' || snippet?.title === 'Private video') continue;
+        videos.push({
+          videoId,
+          title: snippet.title,
+          description: snippet.description?.slice(0, 200) || '',
+          thumbnail: snippet.thumbnails?.high?.url || snippet.thumbnails?.default?.url || '',
+          position: snippet.position,
+          publishedAt: snippet.publishedAt,
+        });
+      }
+    } while (nextPageToken);
+
+    // Step 2: Batch fetch durations from videos endpoint (max 50 per request)
+    const BATCH = 50;
+    for (let i = 0; i < videos.length; i += BATCH) {
+      const ids = videos.slice(i, i + BATCH).map(v => v.videoId).join(',');
+      const detailRes = await axios.get('https://www.googleapis.com/youtube/v3/videos', {
+        params: { part: 'contentDetails,snippet', id: ids, key: apiKey }
+      });
+      for (const item of detailRes.data.items || []) {
+        const vid = videos.find(v => v.videoId === item.id);
+        if (vid) {
+          vid.duration      = parseDuration(item.contentDetails?.duration);
+          vid.channelTitle  = item.snippet?.channelTitle || '';
+          // Use the best available thumbnail
+          vid.thumbnail     = item.snippet?.thumbnails?.maxres?.url
+                           || item.snippet?.thumbnails?.high?.url
+                           || vid.thumbnail;
+        }
+      }
+    }
+
+    // Step 3: Get playlist name from the first video's snippet or a separate API call
+    const plRes = await axios.get('https://www.googleapis.com/youtube/v3/playlists', {
+      params: { part: 'snippet', id: playlistId, key: apiKey }
+    });
+    const playlistName = plRes.data.items?.[0]?.snippet?.title || 'Imported Playlist';
+
+    res.json({ playlistId, playlistName, videos: videos.sort((a, b) => a.position - b.position) });
+  } catch (err) {
+    console.error('YouTube API error:', err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.error?.message || err.message });
+  }
+});
+
+/**
+ * POST /api/admin/courses/assign
+ * Assigns a pre-fetched YouTube playlist as a Course + Videos to one or more users.
+ * Body: { userIds: string[], courseName: string, videos: [{title, link, thumbnail, duration, platform}] }
+ */
+app.post('/api/admin/courses/assign', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { userIds, courseName, videos } = req.body;
+    if (!userIds?.length || !courseName || !videos?.length) {
+      return res.status(400).json({ error: 'userIds, courseName, and videos are required' });
+    }
+
+    const results = [];
+    for (const uid of userIds) {
+      const user = await User.findById(uid);
+      if (!user) { results.push({ uid, status: 'not found' }); continue; }
+
+      // Create course for user (or reuse if same name exists)
+      let course = await Course.findOne({ userId: uid, name: courseName });
+      if (!course) {
+        course = await Course.create({ userId: uid, name: courseName });
+      }
+
+      // Bulk insert videos (skip duplicates by link)
+      const existingLinks = new Set(
+        (await Video.find({ userId: uid, course: courseName }).select('link').lean()).map(v => v.link)
+      );
+      const newVideos = videos
+        .filter(v => !existingLinks.has(v.link))
+        .map((v, idx) => ({
+          userId: uid,
+          course: courseName,
+          title: v.title,
+          link: v.link,
+          platform: v.platform || 'YouTube',
+          duration: v.duration || 0,
+          thumbnail: v.thumbnail || '',
+          tag: v.tag || '',
+          order: Date.now() + idx,
+        }));
+
+      if (newVideos.length) await Video.insertMany(newVideos);
+
+      // Notify user
+      await Notification.create({
+        userId: uid,
+        title: '📚 New Course Assigned!',
+        body: `Admin assigned you a new course: "${courseName}" with ${newVideos.length} video(s).`,
+        icon: 'info',
+      });
+
+      results.push({ uid, name: user.name, videosAdded: newVideos.length, status: 'ok' });
+    }
+
+    res.json({ success: true, results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/admin/courses/assigned
+ * Lists all courses assigned by admin (courses that appear across multiple users with same name).
+ */
+app.get('/api/admin/courses/assigned', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const pipeline = [
+      { $group: { _id: '$name', userCount: { $sum: 1 }, latestAt: { $max: '$createdAt' } } },
+      { $sort: { latestAt: -1 } },
+      { $limit: 50 }
+    ];
+    const courses = await Course.aggregate(pipeline);
+    res.json(courses);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Telegram Integration Routes ─────────────────────
 
 const getPyServiceUrl = () => {
@@ -1083,7 +1265,8 @@ app.get('/api/telegram/videos', authMiddleware, async (req, res) => {
     const videos = await TelegramVideo.find(query)
       .sort({ sync_date: -1 })
       .skip(skip)
-      .limit(limit);
+      .limit(limit)
+      .select('video_id telegram_message_id channel_id channel_name channel_username caption thumbnail telegram_link telegramDeepLink telegramWebLink telegramPrivateLink duration size_mb upload_time sync_date file_path');
       
     const totalCount = await TelegramVideo.countDocuments(query);
     const hasMore = skip + videos.length < totalCount;
@@ -1136,6 +1319,42 @@ app.get('/api/telegram/videos/stream/:id', authMiddleware, async (req, res) => {
       res.writeHead(200, head);
       fs.createReadStream(videoPath).pipe(res);
     }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// One-time backfill: compute deep links for existing records that predate this feature
+app.post('/api/telegram/videos/backfill-links', authMiddleware, async (req, res) => {
+  try {
+    const docs = await TelegramVideo.find({
+      user_id: req.user.id.toString(),
+      telegramDeepLink: { $exists: false }
+    });
+
+    let updated = 0;
+    for (const doc of docs) {
+      const stripped = String(doc.channel_id).replace('-100', '');
+      const username  = doc.channel_username || null;
+
+      let deepLink, webLink, privateLink;
+      if (username) {
+        deepLink    = `tg://resolve?domain=${username}&post=${doc.telegram_message_id}`;
+        webLink     = `https://t.me/${username}/${doc.telegram_message_id}`;
+        privateLink = `https://t.me/c/${stripped}/${doc.telegram_message_id}`;
+      } else {
+        deepLink    = `tg://privatepost?channel=${stripped}&post=${doc.telegram_message_id}`;
+        webLink     = `https://t.me/c/${stripped}/${doc.telegram_message_id}`;
+        privateLink = webLink;
+      }
+
+      await TelegramVideo.updateOne(
+        { _id: doc._id },
+        { $set: { telegramDeepLink: deepLink, telegramWebLink: webLink, telegramPrivateLink: privateLink } }
+      );
+      updated++;
+    }
+    res.json({ success: true, updated });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

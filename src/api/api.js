@@ -152,6 +152,10 @@ export const adminService = {
   getBugReports: () => api.get("/api/admin/bug-reports").then(r => r.data),
   updateBugReport: (id, status) => api.put(`/api/admin/bug-reports/${id}`, { status }).then(r => r.data),
   deleteBugReport: (id) => api.delete(`/api/admin/bug-reports/${id}`).then(r => r.data),
+  // Course Creator
+  fetchYouTubePlaylist: (url) => api.get("/api/admin/youtube/playlist", { params: { url } }).then(r => r.data),
+  assignCourse: (data) => api.post("/api/admin/courses/assign", data).then(r => r.data),
+  getAssignedCourses: () => api.get("/api/admin/courses/assigned").then(r => r.data),
 };
 
 // ── Global Settings Service ──────────────
@@ -168,6 +172,7 @@ export const telegramService = {
   getChannels: () => api.get("/api/telegram/channels").then((r) => r.data),
   syncChannel: (channel_id) => api.post("/api/telegram/sync", { channel_id }).then((r) => r.data),
   getVideos: (page = 1, limit = 10) => api.get("/api/telegram/videos", { params: { page, limit } }).then((r) => r.data),
+  backfillLinks: () => api.post("/api/telegram/videos/backfill-links").then((r) => r.data),
   // stream url doesn't need an api call, it just needs the url construction
   getStreamUrl: (id) => `${API_URL}/api/telegram/videos/stream/${id}`,
 };

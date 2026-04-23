@@ -13,7 +13,10 @@ const telegramVideoSchema = new mongoose.Schema({
   channel_id: { type: Number, required: true },
   
   caption: { type: String, default: '' },
-  telegram_link: { type: String }, // https://t.me/channel_name/message_id
+  telegram_link: { type: String },         // legacy – kept for backwards compat
+  telegramDeepLink: { type: String },     // tg://resolve?domain=...&post=...
+  telegramWebLink: { type: String },      // https://t.me/channel/msgid
+  telegramPrivateLink: { type: String },  // https://t.me/c/channelid/msgid (private)
   
   duration: { type: Number, default: 0 },
   

@@ -268,14 +268,19 @@ async def sync_channel(req: SyncRequest, background_tasks: BackgroundTasks):
                     except:
                         thumb_path = ""
 
+                    # --- Deep Link Generation ---
+                    stripped_id = str(req.channel_id).replace('-100', '')
                     if channel_username:
-                        link = f"tg://resolve?domain={channel_username}&post={msg.id}"
-                        fallback = f"https://t.me/{channel_username}/{msg.id}"
+                        # Public channel: use tg:// deep link + t.me web link
+                        deep_link    = f"tg://resolve?domain={channel_username}&post={msg.id}"
+                        web_link     = f"https://t.me/{channel_username}/{msg.id}"
+                        private_link = f"https://t.me/c/{stripped_id}/{msg.id}"  # fallback
                     else:
-                        stripped_id = str(req.channel_id).replace('-100', '')
-                        link = f"https://t.me/c/{stripped_id}/{msg.id}"
-                        fallback = link
-                    
+                        # Private channel: no username available
+                        deep_link    = f"tg://privatepost?channel={stripped_id}&post={msg.id}"
+                        web_link     = f"https://t.me/c/{stripped_id}/{msg.id}"
+                        private_link = f"https://t.me/c/{stripped_id}/{msg.id}"
+
                     telegram_videos_collection.insert_one({
                         "video_id": vid_id,
                         "telegram_message_id": msg.id,
@@ -287,8 +292,12 @@ async def sync_channel(req: SyncRequest, background_tasks: BackgroundTasks):
                         "file_path": file_path,
                         "file_name": file_name,
                         "thumbnail": thumb_path,
-                        "telegram_link": link,
-                        "telegram_fallback": fallback,
+                        # Legacy link (kept for backwards compat)
+                        "telegram_link": web_link,
+                        # New deep-link fields
+                        "telegramDeepLink":    deep_link,
+                        "telegramWebLink":     web_link,
+                        "telegramPrivateLink": private_link,
                         "upload_time": msg.date,
                         "duration": duration,
                         "size_mb": round(size_mb, 2),
@@ -366,8 +375,18 @@ async def auto_sync_loop():
                                 except:
                                     thumb_path = ""
                                 
-                                link = f"https://t.me/c/{str(ch_id).replace('-100', '')}/{msg.id}"
-                                
+                                # --- Deep Link Generation (auto-sync) ---
+                                stripped_id  = str(ch_id).replace('-100', '')
+                                ch_username  = getattr(entity, 'username', None)
+                                if ch_username:
+                                    deep_link    = f"tg://resolve?domain={ch_username}&post={msg.id}"
+                                    web_link     = f"https://t.me/{ch_username}/{msg.id}"
+                                    private_link = f"https://t.me/c/{stripped_id}/{msg.id}"
+                                else:
+                                    deep_link    = f"tg://privatepost?channel={stripped_id}&post={msg.id}"
+                                    web_link     = f"https://t.me/c/{stripped_id}/{msg.id}"
+                                    private_link = web_link
+
                                 telegram_videos_collection.insert_one({
                                     "video_id": vid_id,
                                     "telegram_message_id": msg.id,
@@ -378,7 +397,12 @@ async def auto_sync_loop():
                                     "file_path": file_path,
                                     "file_name": file_name,
                                     "thumbnail": thumb_path,
-                                    "telegram_link": link,
+                                    # Legacy
+                                    "telegram_link": web_link,
+                                    # Deep links
+                                    "telegramDeepLink":    deep_link,
+                                    "telegramWebLink":     web_link,
+                                    "telegramPrivateLink": private_link,
                                     "upload_time": msg.date,
                                     "duration": duration,
                                     "sync_date": asyncio.get_running_loop().time()

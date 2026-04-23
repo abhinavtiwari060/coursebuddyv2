@@ -38,6 +38,8 @@ export default function TelegramVideos() {
       if (res.connected) {
         fetchVideos();
         fetchChannels();
+        // Silently backfill deep-link fields for pre-existing records
+        telegramService.backfillLinks().catch(() => {});
       }
     } catch (err) {
       setError("Failed to reach Telegram Service. It may be offline.");
