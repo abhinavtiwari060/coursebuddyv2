@@ -224,57 +224,57 @@ async def sync_channel(req: SyncRequest, background_tasks: BackgroundTasks):
 
             completed = 0
             for msg in video_messages:
-                    existing = telegram_videos_collection.find_one({
-                        "user_id": req.user_id, 
-                        "telegram_message_id": msg.id, 
-                        "channel_id": req.channel_id
-                    })
-                    if existing:
-                        continue
-                        
-                    attr = next((a for a in msg.video.attributes if isinstance(a, DocumentAttributeVideo)), None)
-                    duration = attr.duration if attr else 0
-                    size_mb = msg.video.size / (1024 * 1024) if msg.video and hasattr(msg.video, 'size') else 0
+                existing = telegram_videos_collection.find_one({
+                    "user_id": req.user_id, 
+                    "telegram_message_id": msg.id, 
+                    "channel_id": req.channel_id
+                })
+                if existing:
+                    continue
                     
-                    vid_title = msg.message or f"Video {msg.id}"
-                    
-                    # Update cache state
-                    sync_status_cache[req.user_id].update({
-                        "current_video": vid_title[:50] + ("..." if len(vid_title)>50 else ""),
-                    })
+                attr = next((a for a in msg.video.attributes if isinstance(a, DocumentAttributeVideo)), None)
+                duration = attr.duration if attr else 0
+                size_mb = msg.video.size / (1024 * 1024) if msg.video and hasattr(msg.video, 'size') else 0
+                
+                vid_title = msg.message or f"Video {msg.id}"
+                
+                # Update cache state
+                sync_status_cache[req.user_id].update({
+                    "current_video": vid_title[:50] + ("..." if len(vid_title)>50 else ""),
+                })
 
-                    vid_id = str(uuid.uuid4())
-                    file_name = f"{req.channel_id}_{msg.id}.mp4"
-                    file_path = os.path.join(downloads_dir, file_name)
-                    
-                    thumb_name = f"{req.channel_id}_{msg.id}_thumb.jpg"
-                    thumb_path = os.path.join(downloads_dir, thumb_name)
-                    
-                    # Download video and thumbnail safely
-                    await client.download_media(msg, file=file_path)
-                    try:
-                        await client.download_media(msg, file=thumb_path, thumb=-1)
-                    except:
-                        thumb_path = "" # ignore thumbnail extraction bugs
+                vid_id = str(uuid.uuid4())
+                file_name = f"{req.channel_id}_{msg.id}.mp4"
+                file_path = os.path.join(downloads_dir, file_name)
+                
+                thumb_name = f"{req.channel_id}_{msg.id}_thumb.jpg"
+                thumb_path = os.path.join(downloads_dir, thumb_name)
+                
+                # Download video and thumbnail safely
+                await client.download_media(msg, file=file_path)
+                try:
+                    await client.download_media(msg, file=thumb_path, thumb=-1)
+                except:
+                    thumb_path = "" # ignore thumbnail extraction bugs
 
-                    link = f"https://t.me/c/{str(req.channel_id).replace('-100', '')}/{msg.id}"
-                    
-                    telegram_videos_collection.insert_one({
-                        "video_id": vid_id,
-                        "telegram_message_id": msg.id,
-                        "user_id": req.user_id,
-                        "channel_id": req.channel_id,
-                        "channel_name": channel_name,
-                        "caption": vid_title,
-                        "file_path": file_path,
-                        "file_name": file_name,
-                        "thumbnail": thumb_path,
-                        "telegram_link": link,
-                        "upload_time": msg.date,
-                        "duration": duration,
-                        "size_mb": round(size_mb, 2),
-                        "sync_date": asyncio.get_running_loop().time()
-                    })
+                link = f"https://t.me/c/{str(req.channel_id).replace('-100', '')}/{msg.id}"
+                
+                telegram_videos_collection.insert_one({
+                    "video_id": vid_id,
+                    "telegram_message_id": msg.id,
+                    "user_id": req.user_id,
+                    "channel_id": req.channel_id,
+                    "channel_name": channel_name,
+                    "caption": vid_title,
+                    "file_path": file_path,
+                    "file_name": file_name,
+                    "thumbnail": thumb_path,
+                    "telegram_link": link,
+                    "upload_time": msg.date,
+                    "duration": duration,
+                    "size_mb": round(size_mb, 2),
+                    "sync_date": asyncio.get_running_loop().time()
+                })
 
                 completed += 1
                 sync_status_cache[req.user_id].update({
