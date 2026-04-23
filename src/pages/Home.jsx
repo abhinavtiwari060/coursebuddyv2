@@ -17,6 +17,8 @@ import CalendarView from '../components/CalendarView';
 import CourseProgress from '../components/CourseProgress';
 import GoalAnalytics from '../components/GoalAnalytics';
 import DataTools from '../components/DataTools';
+import Confetti from 'react-confetti';
+import TelegramVideos from '../components/telegram/TelegramVideos';
 
 import api, { videoService, courseService, streakService } from '../api/api';
 import { useAuth } from '../context/AuthContext';
@@ -38,6 +40,7 @@ export default function Home() {
 
   const [courses, setCourses] = useState([]);
   const [videos, setVideos] = useState([]);
+  const [videoTab, setVideoTab] = useState('youtube'); // 'youtube' or 'telegram'
   const [streak, setStreak] = useState({ count: 0, lastDate: null });
   const [goalTarget, setGoalTarget] = useState(3);
   
@@ -255,9 +258,28 @@ export default function Home() {
         )}
 
         {activeTab === 'videos' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-6">
-              {randomSuggestion && (
+          <div className="w-full">
+            {/* INNER VIDEO TABS */}
+            <div className="flex gap-4 border-b border-slate-200 dark:border-slate-800 mb-8">
+              <button 
+                onClick={() => setVideoTab('youtube')}
+                className={`py-3 px-4 font-bold border-b-2 transition-all ${videoTab === 'youtube' ? 'border-orange-500 text-orange-500' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+              >
+                My Videos
+              </button>
+              <button 
+                onClick={() => setVideoTab('telegram')}
+                className={`py-3 px-4 font-bold border-b-2 transition-all ${videoTab === 'telegram' ? 'border-indigo-500 text-indigo-500' : 'border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2'}`}
+              >
+                <img src="https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg" alt="App" className="w-4 h-4 grayscale opacity-50" />
+                Telegram Library
+              </button>
+            </div>
+
+            {videoTab === 'youtube' ? (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="lg:col-span-2 space-y-6">
+                  {randomSuggestion && (
                 <div className="glass-card bg-orange-50/50 dark:bg-slate-800/50 p-5 rounded-2xl flex items-center gap-5 shadow-sm border border-orange-200/50 dark:border-slate-700">
                   <div className="w-12 h-12 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-500 flex items-center justify-center rounded-2xl flex-shrink-0 animate-bounce-subtle">
                     <Lightbulb size={24} />
@@ -314,10 +336,13 @@ export default function Home() {
             <div className="space-y-6">
               <StreakCard streak={streak.count} />
               {user?.features?.canUsePomodoro !== false && <Pomodoro />}
-              {user?.features?.canAddCourse !== false && <AddCourseForm onAddCourse={handleAddCourse} />}
-              {user?.features?.canAddVideo !== false && <AddVideoForm courses={courses} onAddVideo={handleAddVideo} />}
-              {user?.features?.canAddVideo !== false && <PlaylistImport courses={courses} onAddVideo={handleAddVideo} />}
+                <AddVideoForm courses={courses} onAddVideo={handleAddVideo} />
+                <PlaylistImport courses={courses} onAddVideo={handleAddVideo} />
+              </div>
             </div>
+            ) : (
+              <TelegramVideos />
+            )}
           </div>
         )}
 

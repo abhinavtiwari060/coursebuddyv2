@@ -1,11 +1,16 @@
 import os
 import asyncio
+import uuid
+import traceback
 from fastapi import FastAPI, HTTPException, Body, Request, BackgroundTasks
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.errors import SessionPasswordNeededError, PhoneCodeExpiredError
+from telethon.tl.types import DocumentAttributeVideo
+from telethon.tl.functions.messages import GetDialogsRequest
 from pymongo import MongoClient
 
 load_dotenv()
@@ -18,6 +23,9 @@ MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/studyflow")
 
 if not API_ID or not API_HASH:
     print("WARNING: TELEGRAM_API_ID and TELEGRAM_API_HASH must be set in .env")
+
+os.makedirs("downloads", exist_ok=True)
+app.mount("/downloads", StaticFiles(directory="downloads"), name="downloads")
 
 # DB Connection
 mongo_client = MongoClient(MONGO_URI)
@@ -126,6 +134,32 @@ async def get_channels(user_id: str):
         traceback.print_exc()
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.get("/api/auth/status")
+async def get_status(user_id: str):
+    doc = telegram_sessions_collection.find_one({"userId": user_id})
+    if not doc or "sessionString" not in doc:
+        return {"connected": False}
+        
+    client = TelegramClient(StringSession(doc["sessionString"]), int(API_ID), API_HASH)
+    
+    try:
+        await client.connect()
+        if not await client.is_user_authorized():
+            await client.disconnect()
+            return {"connected": False}
+            
+        total_videos = telegram_videos_collection.count_documents({"user_id": user_id})
+        await client.disconnect()
+        return {
+            "connected": True,
+            "phone": doc.get("phone", ""),
+            "total_videos": total_videos,
+            "last_sync": doc.get("lastSync")
+        }
+    except Exception as e:
+        await client.disconnect()
+        return {"connected": False}
+
 class SyncRequest(BaseModel):
     user_id: str
     channel_id: int
@@ -145,36 +179,146 @@ async def sync_channel(req: SyncRequest, background_tasks: BackgroundTasks):
     
     async def perform_sync():
         try:
-            from telethon.tl.types import DocumentAttributeVideo
             messages = await client.get_messages(req.channel_id, limit=req.limit)
+            
+            # Fetch channel name properly
+            entity = await client.get_entity(req.channel_id)
+            channel_name = getattr(entity, 'title', str(req.channel_id))
+            
+            # Record latest sync
+            telegram_sessions_collection.update_one(
+                {"userId": req.user_id}, 
+                {"$set": {"lastSync": asyncio.get_running_loop().time()}}
+            )
+
             for msg in messages:
                 if msg.video:
-                    existing = telegram_videos_collection.find_one({"videoId": msg.id, "channelId": req.channel_id})
+                    existing = telegram_videos_collection.find_one({
+                        "user_id": req.user_id, 
+                        "telegram_message_id": msg.id, 
+                        "channel_id": req.channel_id
+                    })
                     if existing:
                         continue
                         
                     attr = next((a for a in msg.video.attributes if isinstance(a, DocumentAttributeVideo)), None)
                     duration = attr.duration if attr else 0
                     
-                    file_path = os.path.join(downloads_dir, f"{req.channel_id}_{msg.id}.mp4")
+                    vid_id = str(uuid.uuid4())
+                    file_name = f"{req.channel_id}_{msg.id}.mp4"
+                    file_path = os.path.join(downloads_dir, file_name)
+                    
+                    thumb_name = f"{req.channel_id}_{msg.id}_thumb.jpg"
+                    thumb_path = os.path.join(downloads_dir, thumb_name)
+                    
+                    # Download video and thumbnail safely
                     await client.download_media(msg, file=file_path)
+                    try:
+                        await client.download_media(msg, file=thumb_path, thumb=-1)
+                    except:
+                        thumb_path = "" # ignore thumbnail extraction bugs
+
+                    link = f"https://t.me/c/{str(req.channel_id).replace('-100', '')}/{msg.id}"
                     
                     telegram_videos_collection.insert_one({
-                        "userId": req.user_id,
-                        "channelId": req.channel_id,
-                        "videoId": msg.id,
+                        "video_id": vid_id,
+                        "telegram_message_id": msg.id,
+                        "user_id": req.user_id,
+                        "channel_id": req.channel_id,
+                        "channel_name": channel_name,
                         "caption": msg.message or "Telegram Video",
-                        "filePath": file_path,
-                        "timestamp": msg.date,
+                        "file_path": file_path,
+                        "file_name": file_name,
+                        "thumbnail": thumb_path,
+                        "telegram_link": link,
+                        "upload_time": msg.date,
                         "duration": duration,
-                        "createdAt": asyncio.get_running_loop().time()
+                        "sync_date": asyncio.get_running_loop().time()
                     })
         except Exception as e:
-            import traceback
             traceback.print_exc()
 
     background_tasks.add_task(perform_sync)
     return {"success": True, "message": "Sync started in background"}
+
+# ── AUTO SYNC LOOP ────────────────────────────
+async def auto_sync_loop():
+    while True:
+        try:
+            # wait 30 minutes
+            await asyncio.sleep(1800)
+            
+            # Fetch all user sessions
+            sessions = telegram_sessions_collection.find({})
+            for session in sessions:
+                user_id = session.get("userId")
+                if not user_id: continue
+                
+                client = get_client(user_id, session.get("sessionString"))
+                if not client.is_connected():
+                    await client.connect()
+                
+                if not await client.is_user_authorized():
+                    continue
+                    
+                # Find all channels the user has synced previously
+                videos = telegram_videos_collection.find({"user_id": user_id}).distinct("channel_id")
+                
+                downloads_dir = os.path.join(os.getcwd(), "downloads")
+                os.makedirs(downloads_dir, exist_ok=True)
+                
+                for ch_id in videos:
+                    # Sync top 10 messages from each channel to catch up automatically
+                    try:
+                        messages = await client.get_messages(ch_id, limit=20)
+                        entity = await client.get_entity(ch_id)
+                        channel_name = getattr(entity, 'title', str(ch_id))
+                        
+                        for msg in messages:
+                            if msg.video:
+                                existing = telegram_videos_collection.find_one({"user_id": user_id, "telegram_message_id": msg.id, "channel_id": ch_id})
+                                if existing: continue
+                                
+                                attr = next((a for a in msg.video.attributes if isinstance(a, DocumentAttributeVideo)), None)
+                                duration = attr.duration if attr else 0
+                                
+                                vid_id = str(uuid.uuid4())
+                                file_name = f"{ch_id}_{msg.id}.mp4"
+                                file_path = os.path.join(downloads_dir, file_name)
+                                thumb_name = f"{ch_id}_{msg.id}_thumb.jpg"
+                                thumb_path = os.path.join(downloads_dir, thumb_name)
+                                
+                                await client.download_media(msg, file=file_path)
+                                try:
+                                    await client.download_media(msg, file=thumb_path, thumb=-1)
+                                except:
+                                    thumb_path = ""
+                                
+                                link = f"https://t.me/c/{str(ch_id).replace('-100', '')}/{msg.id}"
+                                
+                                telegram_videos_collection.insert_one({
+                                    "video_id": vid_id,
+                                    "telegram_message_id": msg.id,
+                                    "user_id": user_id,
+                                    "channel_id": ch_id,
+                                    "channel_name": channel_name,
+                                    "caption": msg.message or "Telegram Video",
+                                    "file_path": file_path,
+                                    "file_name": file_name,
+                                    "thumbnail": thumb_path,
+                                    "telegram_link": link,
+                                    "upload_time": msg.date,
+                                    "duration": duration,
+                                    "sync_date": asyncio.get_running_loop().time()
+                                })
+                    except Exception as e:
+                        print(f"Auto-sync failed for channel {ch_id}:", e)
+        except Exception as e:
+            traceback.print_exc()
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(auto_sync_loop())
 
 @app.get("/api/health")
 async def health_check():

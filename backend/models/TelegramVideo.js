@@ -1,40 +1,27 @@
 import mongoose from 'mongoose';
 
 const telegramVideoSchema = new mongoose.Schema({
-  userId: {
-    type: String, // String representation of ObjectId, or ObjectId
-    required: true,
-  },
-  channelId: {
-    type: Number,
-    required: true,
-  },
-  videoId: {
-    type: Number,
-    required: true,
-  },
-  caption: {
-    type: String,
-    default: '',
-  },
-  filePath: {
-    type: String,
-    required: true,
-  },
-  timestamp: {
-    type: Date,
-  },
-  duration: {
-    type: Number,
-    default: 0,
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
+  video_id: { type: String, required: true }, // unique string ID internal use
+  telegram_message_id: { type: Number, required: true }, // from Telegram msg.id
+  user_id: { type: String, required: true },
+  
+  file_path: { type: String, required: true },
+  file_name: { type: String },
+  thumbnail: { type: String }, // path to downloaded thumbnail
+  
+  channel_name: { type: String }, 
+  channel_id: { type: Number, required: true },
+  
+  caption: { type: String, default: '' },
+  telegram_link: { type: String }, // https://t.me/channel_name/message_id
+  
+  duration: { type: Number, default: 0 },
+  
+  upload_time: { type: Date }, // from msg.date
+  sync_date: { type: Date, default: Date.now },
 });
 
-// Avoid duplicates for same video in same channel
-telegramVideoSchema.index({ channelId: 1, videoId: 1 }, { unique: true });
+// Prevent duplicates for same video/message inside the same channel for the same user
+telegramVideoSchema.index({ user_id: 1, telegram_message_id: 1, channel_id: 1 }, { unique: true });
 
 export default mongoose.model('TelegramVideo', telegramVideoSchema);

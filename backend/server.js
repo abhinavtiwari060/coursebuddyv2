@@ -907,6 +907,21 @@ app.post('/api/telegram/sync', authMiddleware, async (req, res) => {
   }
 });
 
+app.get('/api/telegram/status', authMiddleware, async (req, res) => {
+  try {
+    const pyUrl = getPyServiceUrl();
+    if (!pyUrl) return res.status(503).json({ error: "Telegram Integration is not configured.", detail: "PY_SERVICE_URL is missing." });
+
+    const response = await axios.get(`${pyUrl}/api/auth/status`, {
+      params: { user_id: req.user.id.toString() }
+    });
+    res.json(response.data);
+  } catch (err) {
+    console.error("❌ Telegram /status Error:", err.message);
+    res.status(500).json({ error: "Failed to fetch Telegram status" });
+  }
+});
+
 app.get('/api/telegram/health', async (req, res) => {
   try {
     const pyUrl = getPyServiceUrl();
@@ -926,7 +941,7 @@ app.get('/api/telegram/health', async (req, res) => {
 
 app.get('/api/telegram/videos', authMiddleware, async (req, res) => {
   try {
-    const videos = await TelegramVideo.find({ userId: req.user.id.toString() }).sort({ timestamp: -1 });
+    const videos = await TelegramVideo.find({ user_id: req.user.id.toString() }).sort({ sync_date: -1 });
     res.json(videos);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -934,12 +949,12 @@ app.get('/api/telegram/videos', authMiddleware, async (req, res) => {
 });
 
 // Secure endpoint to stream the locally downloaded video
-app.get('/api/telegram/videos/:id/stream', authMiddleware, async (req, res) => {
+app.get('/api/telegram/videos/stream/:id', authMiddleware, async (req, res) => {
   try {
-    const video = await TelegramVideo.findOne({ _id: req.params.id, userId: req.user.id.toString() });
+    const video = await TelegramVideo.findOne({ video_id: req.params.id, user_id: req.user.id.toString() });
     if (!video) return res.status(404).json({ error: 'Video not found' });
 
-    const videoPath = video.filePath;
+    const videoPath = video.file_path;
     if (!fs.existsSync(videoPath)) {
       return res.status(404).json({ error: 'Video file missing on server' });
     }
@@ -972,6 +987,25 @@ app.get('/api/telegram/videos/:id/stream', authMiddleware, async (req, res) => {
     }
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Proxy thumbnail images
+app.get('/api/telegram/thumb/:filename', async (req, res) => {
+  try {
+    const pyUrl = getPyServiceUrl();
+    if (!pyUrl) return res.status(503).end();
+    
+    const response = await axios({
+      method: 'get',
+      url: `${pyUrl}/downloads/${req.params.filename}`,
+      responseType: 'stream'
+    });
+    
+    res.setHeader('Content-Type', 'image/jpeg');
+    response.data.pipe(res);
+  } catch (err) {
+    res.status(404).end();
   }
 });
 
