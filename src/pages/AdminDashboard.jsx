@@ -7,8 +7,10 @@ import {
   Users, Trash2, Clock, PlayCircle, LogOut, ShieldAlert, X, BookOpen,
   CheckCircle2, Trophy, Medal, Crown, BarChart2, Activity, Eye,
   Search, Filter, ChevronDown, TrendingUp, Flame, AlertTriangle, Send, Palette,
-  Bug, ToggleLeft, ToggleRight, Circle
+  Bug, ToggleLeft, ToggleRight, Circle, Settings as SettingsIcon
 } from 'lucide-react';
+import AdminUserLimit from '../components/AdminUserLimit';
+import SuggestedPlaylistsAdmin from '../components/SuggestedPlaylistsAdmin';
 
 function getInitials(name = '') {
   return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
@@ -18,7 +20,7 @@ const TABS = [
   { id: 'users', label: 'Users', icon: <Users size={16} /> },
   { id: 'leaderboard', label: 'Leaderboard', icon: <Trophy size={16} /> },
   { id: 'bugs', label: 'Bug Reports', icon: <Bug size={16} /> },
-  { id: 'notifications', label: 'Push & Theme', icon: <Send size={16} /> },
+  { id: 'notifications', label: 'Settings & Push', icon: <SettingsIcon size={16} /> },
 ];
 
 const FEATURE_LABELS = {
@@ -751,6 +753,12 @@ export default function AdminDashboard() {
                 </button>
               </div>
             </div>
+
+            {/* User Limit Control */}
+            <AdminUserLimit />
+
+            {/* Suggested Playlists */}
+            <SuggestedPlaylistsAdmin />
 
           </div>
         )}

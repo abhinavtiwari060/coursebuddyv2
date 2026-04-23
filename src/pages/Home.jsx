@@ -19,6 +19,7 @@ import GoalAnalytics from '../components/GoalAnalytics';
 import DataTools from '../components/DataTools';
 import Confetti from 'react-confetti';
 import TelegramVideos from '../components/telegram/TelegramVideos';
+import SuggestedPlaylists from '../components/SuggestedPlaylists';
 
 import api, { videoService, courseService, streakService } from '../api/api';
 import { useAuth } from '../context/AuthContext';
@@ -247,6 +248,7 @@ export default function Home() {
       <main className="flex-1 max-w-7xl mx-auto px-4 py-8 w-full">
         {activeTab === 'dashboard' && (
           <>
+            <SuggestedPlaylists />
             <Dashboard videos={videos} />
             <Quotes />
             <GoalAnalytics videos={videos} streak={streak.count} goalTarget={goalTarget} onUpdateGoal={setGoalTarget} />

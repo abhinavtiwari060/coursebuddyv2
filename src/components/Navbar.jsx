@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import ThemeToggle from './ThemeToggle';
 import BugReport from './BugReport';
+import NotificationPanel from './NotificationPanel';
 import { BookOpen, Zap, Trophy, User, Bug, ChevronDown, LogOut, MessageSquare, Video } from 'lucide-react';
 
 function getInitials(name = '') {
@@ -58,6 +59,7 @@ export default function Navbar() {
             </button>
           )}
 
+          <NotificationPanel />
           <ThemeToggle />
 
           {/* User Menu */}
@@ -100,11 +102,11 @@ export default function Navbar() {
                     )}
                     {user?.features?.canUseCommunity !== false && (
                       <Link
-                        to="/community"
+                        to="/thoughts"
                         onClick={() => setShowMenu(false)}
                         className="flex items-center gap-2 px-4 py-3 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
                       >
-                        <MessageSquare size={15} /> Community
+                        <MessageSquare size={15} /> Thoughts
                       </Link>
                     )}
                     <Link

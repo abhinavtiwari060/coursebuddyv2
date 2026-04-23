@@ -12,7 +12,8 @@ import User from './models/User.js';
 import Video from './models/Video.js';
 import Course from './models/Course.js';
 import Streak from './models/Streak.js';
-import Discussion from './models/Discussion.js';
+import Thought from './models/Thought.js';
+import PlaylistSuggestion from './models/PlaylistSuggestion.js';
 import Settings from './models/Settings.js';
 import BugReport from './models/BugReport.js';
 import Notification from './models/Notification.js';
@@ -104,6 +105,14 @@ const adminMiddleware = (req, res, next) => {
 // ── Auth Routes ─────────────────────
 app.post('/api/auth/signup', async (req, res) => {
   try {
+    const limitSetting = await Settings.findOne({ key: 'max_users' });
+    if (limitSetting && limitSetting.value) {
+      const userCount = await User.countDocuments();
+      if (userCount >= parseInt(limitSetting.value)) {
+        return res.status(403).json({ error: 'Registration limit reached. Please contact admin.' });
+      }
+    }
+
     const { name, email, password } = req.body;
 
     const existingUser = await User.findOne({ email });
@@ -170,6 +179,14 @@ app.post('/api/auth/google', async (req, res) => {
     let user = await User.findOne({ email });
 
     if (!user) {
+      const limitSetting = await Settings.findOne({ key: 'max_users' });
+      if (limitSetting && limitSetting.value) {
+        const userCount = await User.countDocuments();
+        if (userCount >= parseInt(limitSetting.value)) {
+          return res.status(403).json({ error: 'Registration limit reached. Please contact admin.' });
+        }
+      }
+      
       // Auto-signup
       const hashedPassword = await bcrypt.hash(email + process.env.JWT_SECRET, 10); // Dummy pass for google users
       const role = email === 'admin@studyflow.com' ? 'admin' : 'user';
@@ -216,6 +233,18 @@ app.post('/api/admin/settings', authMiddleware, adminMiddleware, async (req, res
     res.status(500).json({ error: err.message });
   }
 });
+
+// Setting max users securely
+app.post('/api/admin/settings/max-users', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { maxUsers } = req.body;
+    await Settings.findOneAndUpdate({ key: 'max_users' }, { value: maxUsers.toString() }, { upsert: true });
+    res.json({ message: 'Max Users limit updated successfully' });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // ── Profile Routes ─────────────────────
 app.get('/api/profile', authMiddleware, async (req, res) => {
@@ -506,41 +535,113 @@ app.post('/api/bug-report', authMiddleware, async (req, res) => {
   }
 });
 
-// ── Community Discussions ─────────────────────
-app.get('/api/community', authMiddleware, async (req, res) => {
+// ── Thoughts of the Day (Replaced Community) ─────────────────────
+app.get('/api/thoughts', authMiddleware, async (req, res) => {
   try {
-    const discussions = await Discussion.find().sort({ createdAt: -1 }).limit(50);
-    res.json(discussions);
+    const thoughts = await Thought.find().sort({ createdAt: -1 }).limit(50);
+    res.json(thoughts);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/community', authMiddleware, async (req, res) => {
+app.post('/api/thoughts', authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-    const discussion = new Discussion({
-      userId: req.user.id,
-      authorName: user.name,
-      authorAvatar: user.avatar,
+    const existingCount = await Thought.countDocuments({ user_id: req.user.id });
+    if (existingCount >= 1) return res.status(403).json({ error: 'You have already posted a thought. Please edit or delete it first.' });
+
+    const thought = new Thought({
+      user_id: req.user.id,
+      username: user.name,
+      avatar: user.avatar,
       content: req.body.content
     });
-    await discussion.save();
-    res.json(discussion);
+    await thought.save();
+    res.json(thought);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/community/:id/like', authMiddleware, async (req, res) => {
+app.put('/api/thoughts/:id', authMiddleware, async (req, res) => {
   try {
-    const discussion = await Discussion.findByIdAndUpdate(
-      req.params.id,
-      { $inc: { likes: 1 } },
+    const thought = await Thought.findOneAndUpdate(
+      { _id: req.params.id, user_id: req.user.id },
+      { content: req.body.content },
       { new: true }
     );
-    res.json(discussion);
+    if (!thought) return res.status(403).json({ error: 'Not authorized or thought not found' });
+    res.json(thought);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/thoughts/:id', authMiddleware, async (req, res) => {
+  try {
+    const doc = await Thought.findOneAndDelete({ _id: req.params.id, user_id: req.user.id });
+    if (!doc) return res.status(403).json({ error: 'Not authorized or thought not found' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/thoughts/:id/like', authMiddleware, async (req, res) => {
+  try {
+    const thought = await Thought.findById(req.params.id);
+    if (!thought) return res.status(404).json({ error: 'Thought not found' });
+
+    const alreadyLiked = thought.liked_by.includes(req.user.id);
+
+    if (alreadyLiked) {
+      thought.liked_by = thought.liked_by.filter(id => id.toString() !== req.user.id.toString());
+      thought.likes_count -= 1;
+    } else {
+      thought.liked_by.push(req.user.id);
+      thought.likes_count += 1;
+    }
+
+    await thought.save();
+    res.json(thought);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Admin Playlists ─────────────────────
+app.get('/api/admin/playlists', authMiddleware, async (req, res) => {
+  try {
+    // Only fetch playlists NOT hidden by this user
+    const playlists = await PlaylistSuggestion.find({
+      hidden_by_users: { $ne: req.user.id }
+    }).sort({ createdAt: -1 });
+    res.json(playlists);
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/playlists', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { title, thumbnail, playlist_url, category } = req.body;
+    const playlist = new PlaylistSuggestion({ title, thumbnail, playlist_url, category });
+    await playlist.save();
+    res.json(playlist);
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Hide a suggested playlist for a user
+app.post('/api/admin/playlists/:id/hide', authMiddleware, async (req, res) => {
+  try {
+    await PlaylistSuggestion.findByIdAndUpdate(req.params.id, {
+      $addToSet: { hidden_by_users: req.user.id }
+    });
+    res.json({ success: true });
+  } catch(err) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -567,16 +668,27 @@ app.delete('/api/profile/fcm-token', authMiddleware, async (req, res) => {
 
 app.get('/api/notifications', authMiddleware, async (req, res) => {
   try {
-    const notifs = await Notification.find({ userId: req.user.id }).sort({ createdAt: -1 });
+    // Do not fetch notifications that are marked as read (deleted dynamically from UI perspective)
+    const notifs = await Notification.find({ userId: req.user.id, isRead: false }).sort({ createdAt: -1 });
     res.json(notifs);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+// Support both PUT natively and the specifically requested PATCH format
 app.put('/api/notifications/:id/read', authMiddleware, async (req, res) => {
   try {
-    await Notification.findByIdAndUpdate(req.params.id, { isRead: true });
+    await Notification.findByIdAndUpdate(req.params.id, { isRead: true, readAt: new Date() });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/notifications/read/:id', authMiddleware, async (req, res) => {
+  try {
+    await Notification.findByIdAndUpdate(req.params.id, { isRead: true, readAt: new Date() });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

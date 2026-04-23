@@ -11,7 +11,7 @@ import Signup from './pages/Signup';
 import AdminDashboard from './pages/AdminDashboard';
 import Profile from './pages/Profile';
 import Leaderboard from './pages/Leaderboard';
-import Community from './pages/Community';
+import Thoughts from './pages/Thoughts';
 import TelegramApp from './pages/TelegramApp';
 
 // Protected Route Wrapper
@@ -144,10 +144,10 @@ export default function App() {
             } 
           />
           <Route 
-            path="/community" 
+            path="/thoughts" 
             element={
               <FeatureGate feature="canUseCommunity">
-                <Community />
+                <Thoughts />
               </FeatureGate>
             } 
           />

@@ -121,11 +121,13 @@ export const bugReportService = {
   submit: (data) => api.post("/api/bug-report", data).then((r) => r.data),
 };
 
-// ── Community Service ────────────────────
-export const communityService = {
-  getDiscussions: () => api.get("/api/community").then((r) => r.data),
-  postDiscussion: (content) => api.post("/api/community", { content }).then((r) => r.data),
-  likeDiscussion: (id) => api.post(`/api/community/${id}/like`).then((r) => r.data),
+// ── Thought Service ────────────────────
+export const thoughtService = {
+  getThoughts: () => api.get("/api/thoughts").then((r) => r.data),
+  createThought: (content) => api.post("/api/thoughts", { content }).then((r) => r.data),
+  updateThought: (id, content) => api.put(`/api/thoughts/${id}`, { content }).then((r) => r.data),
+  deleteThought: (id) => api.delete(`/api/thoughts/${id}`).then((r) => r.data),
+  likeThought: (id) => api.post(`/api/thoughts/${id}/like`).then((r) => r.data),
 };
 
 // ── Notification Service ─────────────────
@@ -144,6 +146,9 @@ export const adminService = {
   getLeaderboard: () => api.get("/api/admin/leaderboard").then((r) => r.data),
   sendPush: (data) => api.post("/api/admin/push", data).then((r) => r.data),
   updateSettings: (settings) => api.post("/api/admin/settings", { settings }).then((r) => r.data),
+  setMaxUsers: (maxUsers) => api.post("/api/admin/settings/max-users", { maxUsers }).then((r) => r.data),
+  getPlaylists: () => api.get("/api/admin/playlists").then((r) => r.data),
+  createPlaylist: (data) => api.post("/api/admin/playlists", data).then((r) => r.data),
   getBugReports: () => api.get("/api/admin/bug-reports").then(r => r.data),
   updateBugReport: (id, status) => api.put(`/api/admin/bug-reports/${id}`, { status }).then(r => r.data),
   deleteBugReport: (id) => api.delete(`/api/admin/bug-reports/${id}`).then(r => r.data),

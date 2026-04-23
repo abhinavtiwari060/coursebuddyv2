@@ -3,32 +3,7 @@ import { formatDuration } from '../utils/helpers';
 import { Clock, PlayCircle, CheckCircle2, TrendingUp, Sparkles, Bell, Video } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { notificationService } from '../api/api';
-
 export default function Dashboard({ videos }) {
-  const [notifications, setNotifications] = useState([]);
-
-  useEffect(() => {
-    const fetchNotifs = async () => {
-      try {
-        const data = await notificationService.get();
-        setNotifications(data);
-      } catch (err) {
-        console.error('Failed to fetch notifications', err);
-      }
-    };
-    fetchNotifs();
-  }, []);
-
-  const handleMarkRead = async (id) => {
-    try {
-      await notificationService.markRead(id);
-      setNotifications(prev => prev.map(n => n._id === id ? { ...n, isRead: true } : n));
-    } catch (err) {
-      console.error(err);
-    }
-  };
-  // test
 
   const total = videos.length;
   const completedVideos = videos.filter(v => v.completed);
@@ -36,8 +11,6 @@ export default function Dashboard({ videos }) {
   const remaining = total - completed;
   const progress = total === 0 ? 0 : Math.round((completed / total) * 100);
   const totalWatchSecs = completedVideos.reduce((a, v) => a + (Number(v.duration) || 0), 0);
-
-  const unreadCount = notifications.filter(n => !n.isRead).length;
 
   return (
     <div className="mb-8">
@@ -121,50 +94,6 @@ export default function Dashboard({ videos }) {
         </Link>
       </div>
 
-      {/* Notifications Section */}
-      <div className="glass-card p-6 rounded-3xl">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-black flex items-center gap-2 dark:text-white">
-            <Bell className="text-orange-500" /> Notifications
-          </h2>
-          {unreadCount > 0 && (
-            <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
-              {unreadCount} New
-            </span>
-          )}
-        </div>
-
-        <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
-          {notifications.length === 0 ? (
-            <p className="text-slate-500 text-sm italic">No notifications yet.</p>
-          ) : (
-            notifications.map(n => (
-              <div
-                key={n._id}
-                className={`p-4 rounded-2xl border transition ${n.isRead ? 'bg-white/50 border-slate-100 dark:bg-slate-800/30 dark:border-slate-800 opacity-75' : 'bg-orange-50 border-orange-200 dark:bg-orange-900/20 dark:border-orange-800'}`}
-              >
-                <div className="flex justify-between items-start gap-4">
-                  <div>
-                    <h4 className="font-bold text-slate-800 dark:text-white">{n.title}</h4>
-                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{n.body}</p>
-                    <span className="text-xs text-slate-400 mt-2 block">
-                      {new Date(n.createdAt).toLocaleDateString()}
-                    </span>
-                  </div>
-                  {!n.isRead && (
-                    <button
-                      onClick={() => handleMarkRead(n._id)}
-                      className="text-xs bg-white dark:bg-slate-700 font-bold px-3 py-1 rounded-full shadow-sm hover:bg-slate-100 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-200"
-                    >
-                      Mark Read
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
     </div>
   );
 }
