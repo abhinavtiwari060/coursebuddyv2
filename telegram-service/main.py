@@ -169,6 +169,15 @@ async def sync_channel(req: SyncRequest, background_tasks: BackgroundTasks):
     background_tasks.add_task(perform_sync)
     return {"success": True, "message": "Sync started in background"}
 
+@app.get("/api/health")
+async def health_check():
+    # Simple check to ensure service is up and db is reachable
+    try:
+        # Check mongo connection
+        mongo_client.admin.command('ping')
+        return {"status": "ok", "service": "Telegram Sync Microservice"}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Database connection failed: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

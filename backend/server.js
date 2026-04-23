@@ -801,29 +801,46 @@ app.get('/api/admin/leaderboard', authMiddleware, adminMiddleware, async (req, r
 });
 
 // ── Telegram Integration Routes ─────────────────────
-const PY_SERVICE_URL = process.env.PY_SERVICE_URL || 'http://localhost:8000';
+
+const getPyServiceUrl = () => {
+  const url = process.env.PY_SERVICE_URL;
+  if (!url) {
+    console.error("🔥 CRITICAL ERROR: PY_SERVICE_URL environment variable is missing.");
+    return null;
+  }
+  return url.replace(/\/$/, ""); // remove trailing slash
+};
 
 app.post('/api/telegram/connect', authMiddleware, async (req, res) => {
   try {
+    const pyUrl = getPyServiceUrl();
+    if (!pyUrl) return res.status(503).json({ error: "Telegram Integration is not configured on this server.", detail: "PY_SERVICE_URL is missing." });
+
     const { phone } = req.body;
-    const response = await axios.post(`${PY_SERVICE_URL}/api/auth/send_code`, {
+    const response = await axios.post(`${pyUrl}/api/auth/send_code`, {
       user_id: req.user.id.toString(),
       phone
     });
     
     res.json(response.data);
   } catch (err) {
+    console.error("❌ Telegram /connect Error:", err.message);
     if (err.response) {
+      console.error("   Response Data:", err.response.data);
       return res.status(err.response.status).json(err.response.data);
     }
-    res.status(500).json({ error: err.message });
+    console.error(err.stack);
+    res.status(500).json({ error: "Failed to connect to Telegram service", detail: err.message });
   }
 });
 
 app.post('/api/telegram/verify', authMiddleware, async (req, res) => {
   try {
+    const pyUrl = getPyServiceUrl();
+    if (!pyUrl) return res.status(503).json({ error: "Telegram Integration is not configured.", detail: "PY_SERVICE_URL is missing." });
+
     const { phone, phone_code_hash, code, session_string } = req.body;
-    const response = await axios.post(`${PY_SERVICE_URL}/api/auth/verify_code`, {
+    const response = await axios.post(`${pyUrl}/api/auth/verify_code`, {
       user_id: req.user.id.toString(),
       phone,
       phone_code_hash,
@@ -833,31 +850,43 @@ app.post('/api/telegram/verify', authMiddleware, async (req, res) => {
     
     res.json(response.data);
   } catch (err) {
+    console.error("❌ Telegram /verify Error:", err.message);
     if (err.response) {
+      console.error("   Response Data:", err.response.data);
       return res.status(err.response.status).json(err.response.data);
     }
-    res.status(500).json({ error: err.message });
+    console.error(err.stack);
+    res.status(500).json({ error: "Failed to verify Telegram code", detail: err.message });
   }
 });
 
 app.get('/api/telegram/channels', authMiddleware, async (req, res) => {
   try {
-    const response = await axios.get(`${PY_SERVICE_URL}/api/channels`, {
+    const pyUrl = getPyServiceUrl();
+    if (!pyUrl) return res.status(503).json({ error: "Telegram Integration is not configured.", detail: "PY_SERVICE_URL is missing." });
+
+    const response = await axios.get(`${pyUrl}/api/channels`, {
       params: { user_id: req.user.id.toString() }
     });
     res.json(response.data);
   } catch (err) {
+    console.error("❌ Telegram /channels Error:", err.message);
     if (err.response) {
+      console.error("   Response Data:", err.response.data);
       return res.status(err.response.status).json(err.response.data);
     }
-    res.status(500).json({ error: err.message });
+    console.error(err.stack);
+    res.status(500).json({ error: "Failed to fetch Telegram channels", detail: err.message });
   }
 });
 
 app.post('/api/telegram/sync', authMiddleware, async (req, res) => {
   try {
+    const pyUrl = getPyServiceUrl();
+    if (!pyUrl) return res.status(503).json({ error: "Telegram Integration is not configured.", detail: "PY_SERVICE_URL is missing." });
+
     const { channel_id } = req.body;
-    const response = await axios.post(`${PY_SERVICE_URL}/api/sync`, {
+    const response = await axios.post(`${pyUrl}/api/sync`, {
       user_id: req.user.id.toString(),
       channel_id: parseInt(channel_id),
       limit: 50 // configure appropriately
@@ -865,10 +894,30 @@ app.post('/api/telegram/sync', authMiddleware, async (req, res) => {
     
     res.json(response.data);
   } catch (err) {
+    console.error("❌ Telegram /sync Error:", err.message);
     if (err.response) {
+      console.error("   Response Data:", err.response.data);
       return res.status(err.response.status).json(err.response.data);
     }
-    res.status(500).json({ error: err.message });
+    console.error(err.stack);
+    res.status(500).json({ error: "Failed to sync Telegram channel", detail: err.message });
+  }
+});
+
+app.get('/api/telegram/health', async (req, res) => {
+  try {
+    const pyUrl = getPyServiceUrl();
+    if (!pyUrl) return res.status(503).json({ error: "Telegram Integration is not configured.", detail: "PY_SERVICE_URL is missing." });
+
+    const response = await axios.get(`${pyUrl}/api/health`, { timeout: 5000 });
+    res.json({
+      configured: true,
+      python_service: response.data,
+      status: "Healthy"
+    });
+  } catch (err) {
+    console.error("❌ Telegram /health Error:", err.message);
+    res.status(503).json({ error: "Python service is unreachable", detail: err.message });
   }
 });
 
