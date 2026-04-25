@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import ReactPlayer from 'react-player';
 import { videoService } from '../api/api';
 import { progressService } from '../api/api';
 import { ArrowLeft, ChevronLeft, ChevronRight, CheckCircle2, PlayCircle, Lock, List, X, BookOpen } from 'lucide-react';
@@ -9,13 +10,13 @@ export default function VideoPlayer() {
   const { courseId, videoId } = useParams();
   const navigate = useNavigate();
   const playerRef = useRef(null);
-  const progressTimerRef = useRef(null);
 
   const [videos, setVideos] = useState([]);
   const [currentVideo, setCurrentVideo] = useState(null);
   const [progress, setProgress] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [duration, setDuration] = useState(0);
 
   // Extract YouTube video ID from link
   const getYouTubeId = (url) => {
@@ -131,14 +132,23 @@ export default function VideoPlayer() {
           {/* Player */}
           <div className="w-full bg-black aspect-video relative flex items-center justify-center">
             {ytId ? (
-              <iframe
+              <ReactPlayer
                 ref={playerRef}
                 key={ytId}
-                src={`https://www.youtube.com/embed/${ytId}?autoplay=1&rel=0&modestbranding=1`}
-                className="w-full h-full"
-                allow="autoplay; fullscreen; picture-in-picture"
-                allowFullScreen
-                title={currentVideo?.title}
+                url={`https://www.youtube.com/watch?v=${ytId}`}
+                width="100%"
+                height="100%"
+                controls
+                playing
+                onDuration={setDuration}
+                onProgress={({ playedSeconds }) => {
+                  if (Math.floor(playedSeconds) % 10 === 0) {
+                    saveProgress(currentVideo._id, playedSeconds);
+                  }
+                  if (duration > 0 && playedSeconds > duration * 0.9 && !currentVideo.completed) {
+                    handleComplete();
+                  }
+                }}
               />
             ) : (
               <div className="flex flex-col items-center gap-4 text-slate-400">

@@ -7,6 +7,7 @@ import {
   Clock, Flame, Trophy, Calendar, LogOut, ArrowLeft, Bell, BellOff
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import UserDriveManager from '../components/UserDriveManager';
 
 export default function Profile() {
   const { user: authUser, logout } = useAuth();
@@ -255,27 +256,31 @@ export default function Profile() {
             <div key={i} className={`p-5 rounded-2xl border ${s.bg} glass-card flex flex-col items-center text-center gap-2`}>
               <div className="p-2 bg-white/60 dark:bg-slate-800/60 rounded-xl">{s.icon}</div>
               <span className="text-2xl font-black dark:text-white">{s.value}</span>
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">{s.label}</span>
               <span className="text-xs text-slate-400">{s.sub}</span>
             </div>
           ))}
         </div>
 
-        {/* Progress bar */}
-        <div className="glass-card p-6 rounded-2xl">
-          <div className="flex justify-between items-center mb-3">
-            <h3 className="font-bold text-slate-800 dark:text-white">Overall Completion</h3>
-            <span className="text-2xl font-black text-orange-500">{completionRate}%</span>
+        {/* Integration Section */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <UserDriveManager />
+          
+          {/* Progress bar */}
+          <div className="glass-card p-6 rounded-2xl border border-slate-200 dark:border-slate-800">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="font-bold text-slate-800 dark:text-white">Overall Completion</h3>
+              <span className="text-2xl font-black text-orange-500">{completionRate}%</span>
+            </div>
+            <div className="h-4 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-orange-400 to-amber-400 rounded-full transition-all duration-1000"
+                style={{ width: `${completionRate}%` }}
+              />
+            </div>
+            <p className="text-xs text-slate-500 mt-2">
+              {stats.completedVideos} of {stats.totalVideos} videos completed
+            </p>
           </div>
-          <div className="h-4 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-orange-400 to-amber-400 rounded-full transition-all duration-1000"
-              style={{ width: `${completionRate}%` }}
-            />
-          </div>
-          <p className="text-xs text-slate-500 mt-2">
-            {stats.completedVideos} of {stats.totalVideos} videos completed
-          </p>
         </div>
 
         {/* Recent Activity */}

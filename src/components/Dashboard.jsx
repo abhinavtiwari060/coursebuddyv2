@@ -1,6 +1,6 @@
 import ProgressBar from './ProgressBar';
 import { formatDuration } from '../utils/helpers';
-import { Clock, PlayCircle, CheckCircle2, TrendingUp, Sparkles, HardDrive, Zap, LayoutCircle } from 'lucide-react';
+import { Clock, PlayCircle, CheckCircle2, TrendingUp, Sparkles, HardDrive, Zap } from 'lucide-react';
 import Logo from './Logo';
 
 export default function Dashboard({ videos, driveCourses = [] }) {

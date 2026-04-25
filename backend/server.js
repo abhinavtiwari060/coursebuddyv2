@@ -24,6 +24,7 @@ import Quiz from './models/Quiz.js';
 import Question from './models/Question.js';
 import QuizAttempt from './models/QuizAttempt.js';
 import UserProgress from './models/UserProgress.js';
+import QuizAssignment from './models/QuizAssignment.js';
 
 // Google Drive Models
 import DriveFolder from './models/DriveFolder.js';
@@ -1400,10 +1401,61 @@ app.delete('/api/admin/questions/:qId', authMiddleware, adminMiddleware, async (
 app.put('/api/admin/users/:id/quiz-role', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { quizRole } = req.body;
-    const user = await User.findByIdAndUpdate(req.params.id, { quizRole }, { new: true }).select('-password');
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    const user = await User.findByIdAndUpdate(req.params.id, { quizRole }, { new: true });
     res.json(user);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Quiz Assignment ─────────────────────
+app.post('/api/admin/quiz/assign', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { userId, quizId } = req.body;
+    let assignment = await QuizAssignment.findOne({ userId, quizId });
+    if (!assignment) {
+      assignment = new QuizAssignment({
+        userId,
+        quizId,
+        assignedBy: req.user.id
+      });
+      await assignment.save();
+    } else {
+      assignment.accessStatus = 'active';
+      await assignment.save();
+    }
+    res.json(assignment);
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/quiz/revoke', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { userId, quizId } = req.body;
+    await QuizAssignment.findOneAndUpdate({ userId, quizId }, { accessStatus: 'revoked' });
+    res.json({ message: 'Revoked' });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/quiz/:quizId/assignments', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const assignments = await QuizAssignment.find({ quizId: req.params.quizId }).populate('userId', 'name email');
+    res.json(assignments);
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// User getting their active assigned quizzes
+app.get('/api/quiz/assigned', authMiddleware, async (req, res) => {
+  try {
+    const assignments = await QuizAssignment.find({ userId: req.user.id, accessStatus: 'active' }).populate('quizId');
+    const quizzes = assignments.map(a => a.quizId).filter(q => q !== null);
+    res.json(quizzes);
+  } catch(err) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -1412,10 +1464,12 @@ app.put('/api/admin/users/:id/quiz-role', authMiddleware, adminMiddleware, async
 
 app.get('/api/quiz/active', authMiddleware, async (req, res) => {
   try {
-    const quiz = await Quiz.findOne({ status: 'active' }).sort({ startTime: -1 });
-    if (!quiz) return res.json(null);
-    const questionCount = await Question.countDocuments({ quizId: quiz._id });
-    res.json({ ...quiz.toObject(), questionCount });
+    const assignments = await QuizAssignment.find({ userId: req.user.id, accessStatus: 'active' }).populate('quizId');
+    const activeAssignedQuiz = assignments.map(a => a.quizId).find(q => q && q.status === 'active');
+    
+    if (!activeAssignedQuiz) return res.json(null);
+    const questionCount = await Question.countDocuments({ quizId: activeAssignedQuiz._id });
+    res.json({ ...activeAssignedQuiz.toObject(), questionCount });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1541,6 +1595,21 @@ app.get('/api/quiz/:id/leaderboard', authMiddleware, async (req, res) => {
 
 // ── Google Drive Integration ─────────────────────
 import { extractDriveFolderId, syncDriveFolder } from './driveSync.js';
+import { getAuthUrl, handleCallback, getDriveClient } from './driveAuth.js';
+
+app.get('/api/drive/auth/url', authMiddleware, (req, res) => {
+  res.json({ url: getAuthUrl(req.user.id) });
+});
+
+app.get('/api/drive/auth/callback', async (req, res) => {
+  try {
+    const { code, state } = req.query;
+    await handleCallback(code, state);
+    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/profile?drive=success`);
+  } catch (err) {
+    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/profile?drive=error`);
+  }
+});
 
 // Admin: Add Drive Folder
 app.post('/api/admin/drive/add', authMiddleware, adminMiddleware, async (req, res) => {
@@ -1636,15 +1705,50 @@ app.get('/api/drive/stream/:fileId', authMiddleware, async (req, res) => {
   }
 });
 
-// User: Get Structured Course List
+// User: Add Personal Drive Folder
+app.post('/api/drive/user/add', authMiddleware, async (req, res) => {
+  try {
+    const { url, name, description } = req.body;
+    const folderId = extractDriveFolderId(url);
+    if (!folderId) return res.status(400).json({ error: 'Invalid Google Drive Folder URL' });
 
+    let folder = await DriveFolder.findOne({ folderId });
+    if (folder) return res.status(400).json({ error: 'This folder is already registered.' });
+
+    // Use user's own oauth token if possible (handled in driveSync if we pass userId, but for now we let syncDriveFolder use it or default)
+    // Wait, syncDriveFolder currently uses process.env.GOOGLE_DRIVE_API_KEY. 
+    // If we want to use the user's own connected drive token, we need to update driveSync.js.
+
+    folder = new DriveFolder({
+      folderId,
+      folderName: name || 'My Personal Drive',
+      description,
+      folderUrl: url,
+      addedBy: req.user.id
+    });
+
+    await folder.save();
+    
+    // Background sync - Pass userId to syncDriveFolder so it uses their token!
+    syncDriveFolder(folder._id, req.user.id).catch(e => console.error("Auto-sync error:", e));
+
+    res.json({ message: 'Drive folder added. Sync started in background.', folder });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// User: Get Structured Course List
 app.get('/api/drive/courses', authMiddleware, async (req, res) => {
   try {
-    const folders = await DriveFolder.find().select('folderId folderName description totalVideos lastSynced');
+    const adminUsers = await User.find({ role: 'admin' }).distinct('_id');
+    const folders = await DriveFolder.find({
+      $or: [
+        { addedBy: { $in: adminUsers } },
+        { addedBy: req.user.id }
+      ]
+    }).select('folderId folderName description totalVideos lastSynced addedBy');
     
-    // For each folder, we could provide some sample hierarchy if needed, 
-    // but the frontend will likely fetch per-folder or we send a flat video list to reconstruct.
-    // For performance, we send the root folders first.
     res.json(folders);
   } catch (err) {
     res.status(500).json({ error: err.message });

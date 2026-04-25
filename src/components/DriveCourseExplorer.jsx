@@ -37,13 +37,22 @@ export default function DriveCourseExplorer({ initialCourse = null }) {
     }
   };
 
+  const [videoCache, setVideoCache] = useState({});
+
   const handleSelectCourse = async (course) => {
     setSelectedCourse(course);
-    setLoadingVideos(true);
     setExpandedFolders(new Set()); // Reset on new course
+    
+    if (videoCache[course.folderId]) {
+      setVideos(videoCache[course.folderId]);
+      return;
+    }
+
+    setLoadingVideos(true);
     try {
       const data = await driveService.getVideos(course.folderId);
       setVideos(data);
+      setVideoCache(prev => ({ ...prev, [course.folderId]: data }));
     } catch (err) {
       console.error(err);
     } finally {

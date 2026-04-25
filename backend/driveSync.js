@@ -8,9 +8,21 @@ export function extractDriveFolderId(url) {
   return match ? match[1] : url.trim(); 
 }
 
-export async function syncDriveFolder(driveFolderId) {
-  const apiKey = process.env.GOOGLE_DRIVE_API_KEY;
-  if (!apiKey) throw new Error("GOOGLE_DRIVE_API_KEY is not configured in .env");
+import User from './models/User.js';
+
+export async function syncDriveFolder(driveFolderId, userId = null) {
+  let apiKey = process.env.GOOGLE_DRIVE_API_KEY;
+  let accessToken = null;
+
+  if (userId) {
+    const user = await User.findById(userId);
+    if (user?.googleDriveTokens?.accessToken) {
+      accessToken = user.googleDriveTokens.accessToken;
+      apiKey = null; // Disable API key if we have oauth token
+    }
+  }
+
+  if (!apiKey && !accessToken) throw new Error("No Google Drive API Key or User Token found");
 
   const folderDoc = await DriveFolder.findById(driveFolderId);
   if (!folderDoc) throw new Error("Folder document not found");
@@ -29,18 +41,29 @@ export async function syncDriveFolder(driveFolderId) {
       console.log(`[DRIVE_SYNC] Scanning folder: ${pathParts.join('/')} (ID: ${currentFolderId})`);
       let pageToken = null;
       do {
-        const resp = await axios.get('https://www.googleapis.com/drive/v3/files', {
+        const config = {
           params: {
-            key: apiKey,
             q: `'${currentFolderId}' in parents and trashed=false`,
             fields: 'nextPageToken, files(id, name, mimeType, size, videoMediaMetadata, thumbnailLink, createdTime)',
             pageToken: pageToken,
-            pageSize: 1000
+            pageSize: 1000,
+            supportsAllDrives: true,
+            includeItemsFromAllDrives: true
           }
-        });
+        };
+        if (apiKey) config.params.key = apiKey;
+        if (accessToken) {
+          config.headers = { Authorization: `Bearer ${accessToken}` };
+        }
+
+        const resp = await axios.get('https://www.googleapis.com/drive/v3/files', config);
 
         const files = resp.data.files || [];
         console.log(`[DRIVE_SYNC] Found ${files.length} items in current folder`);
+        
+        if (files.length === 0 && currentFolderId === rootId) {
+          console.warn(`[DRIVE_SYNC] WARNING: Root folder is empty. This usually indicates a PERMISSION ISSUE. Ensure the folder is set to 'Anyone with the link can view'.`);
+        }
         
         let order = 0;
         for (const file of files) {

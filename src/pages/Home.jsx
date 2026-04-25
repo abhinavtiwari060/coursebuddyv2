@@ -27,7 +27,7 @@ import api, { videoService, courseService, streakService, driveService } from '.
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 
-import { Lightbulb, GripVertical, LayoutDashboard, Video, BarChart2, BookOpen, Settings, Trophy, User, HardDrive, ShieldAlert } from 'lucide-react';
+import { Lightbulb, GripVertical, LayoutDashboard, Video, BarChart2, BookOpen, Settings, Trophy, User, HardDrive, ShieldAlert, ArrowLeft } from 'lucide-react';
 
 const TABS = [
   { id: 'dashboard', label: 'Study Table', icon: <LayoutDashboard size={18} /> },
@@ -44,6 +44,7 @@ export default function Home() {
   const [courses, setCourses] = useState([]);
   const [videos, setVideos] = useState([]);
   const [driveCourses, setDriveCourses] = useState([]);
+  const [assignedQuizzes, setAssignedQuizzes] = useState([]);
   
   // View state
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -62,11 +63,12 @@ export default function Home() {
     const loadData = async () => {
       try {
         console.log(`[DASHBOARD] Fetching content for user: ${user.email}`);
-        const [vids, crs, strk, driveCrs] = await Promise.all([
+        const [vids, crs, strk, driveCrs, quizzes] = await Promise.all([
           videoService.getAll(),
           courseService.getAll(),
           streakService.get(),
           driveService.getCourses().catch(() => []),
+          api.get('/api/quiz/assigned').then(r => r.data).catch(() => []),
           refreshUser() // Fetch latest permissions
         ]);
         console.log(`[DASHBOARD] Content loaded: ${vids.length} videos, ${crs.length} courses, ${driveCrs.length} drive courses`);
@@ -77,6 +79,7 @@ export default function Home() {
         setVideos(vids);
         setCourses(crs.map(c => ({ id: c._id, name: c.name })));
         setDriveCourses(driveCrs);
+        setAssignedQuizzes(quizzes);
         
         if (strk) {
           setStreak({ count: strk.currentStreak, lastDate: strk.lastActiveDate });
@@ -86,7 +89,7 @@ export default function Home() {
       }
     };
     loadData();
-  }, [user, navigate]);
+  }, [user?._id, navigate]);
 
   useEffect(() => {
     const pending = videos.filter(v => !v.completed);
@@ -460,10 +463,43 @@ export default function Home() {
         {activeTab === 'quizzes' && (
           <div className="space-y-6">
             <LiveQuizBanner />
-            <div className="glass-card p-12 rounded-[2.5rem] text-center border-dashed border-2 border-slate-200 dark:border-slate-800">
-               <Trophy size={48} className="mx-auto mb-4 text-slate-300 opacity-50" />
-               <h3 className="text-xl font-bold dark:text-white">Quiz Center</h3>
-               <p className="text-slate-500 mt-2">Active quizzes will appear here. Check back frequently for new challenges!</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {assignedQuizzes.length > 0 ? assignedQuizzes.map(quiz => {
+                if (!quiz) return null;
+                const active = quiz.status === 'active';
+                return (
+                  <div key={quiz._id} className="glass-card p-6 rounded-[2rem] hover:shadow-xl transition-all border-orange-100 dark:border-orange-900/30">
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900/30 rounded-2xl flex items-center justify-center text-orange-500">
+                        <Trophy size={24} />
+                      </div>
+                      <span className={`badge text-[10px] font-black uppercase tracking-widest ${active ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-500'}`}>
+                        {active ? 'Live Now' : quiz.status}
+                      </span>
+                    </div>
+                    <h3 className="font-bold text-lg dark:text-white mb-2">{quiz.title}</h3>
+                    <p className="text-xs text-slate-500 mb-6 line-clamp-2">{quiz.description}</p>
+                    <div className="flex justify-between items-center border-t border-slate-100 dark:border-slate-800 pt-4">
+                      <div className="text-xs font-bold text-slate-400">
+                        {quiz.questions?.length || 0} Questions
+                      </div>
+                      <Link 
+                        to={`/quiz/${quiz._id}`}
+                        className={`px-4 py-2 rounded-xl text-sm font-bold transition ${active ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-lg shadow-orange-500/20' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                        onClick={e => !active && e.preventDefault()}
+                      >
+                        {active ? 'Start Quiz' : 'Unavailable'}
+                      </Link>
+                    </div>
+                  </div>
+                );
+              }) : (
+                <div className="col-span-full glass-card p-12 rounded-[2.5rem] text-center border-dashed border-2 border-slate-200 dark:border-slate-800">
+                   <Trophy size={48} className="mx-auto mb-4 text-slate-300 opacity-50" />
+                   <h3 className="text-xl font-bold dark:text-white">Quiz Center</h3>
+                   <p className="text-slate-500 mt-2">Active quizzes will appear here. Check back frequently for new challenges!</p>
+                </div>
+              )}
             </div>
           </div>
         )}

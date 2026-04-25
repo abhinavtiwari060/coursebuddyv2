@@ -10,6 +10,11 @@ const userSchema = new mongoose.Schema({
   avatar: { type: String, default: '' }, // URL or base64
   fcmToken: { type: String, default: null }, // For Push Notifications
   isOnline: { type: Boolean, default: false },
+  googleDriveTokens: {
+    accessToken: { type: String, default: null },
+    refreshToken: { type: String, default: null },
+    expiryDate: { type: Number, default: null }
+  },
   features: {
     type: Object,
     default: {

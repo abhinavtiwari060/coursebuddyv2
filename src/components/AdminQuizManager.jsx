@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { quizService } from '../api/api';
+import { quizService, adminService } from '../api/api';
 import { 
   Plus, Trash2, Play, Square, Edit3, ChevronDown, ChevronRight, 
-  Loader2, CheckCircle2, Clock, Users, BookOpen, Image, X, Save 
+  Loader2, CheckCircle2, Clock, Users, BookOpen, Image, X, Save, Lock
 } from 'lucide-react';
 
 const STATUS_COLORS = {
@@ -21,6 +21,9 @@ export default function AdminQuizManager() {
   const [questions, setQuestions] = useState({});
   const [showCreateQuiz, setShowCreateQuiz] = useState(false);
   const [showAddQuestion, setShowAddQuestion] = useState(null); // quizId
+  const [showAccess, setShowAccess] = useState(null); // quizId
+  const [usersList, setUsersList] = useState([]);
+  const [assignments, setAssignments] = useState({}); // quizId -> list of active assigned user IDs
   const [newQuiz, setNewQuiz] = useState(emptyQuiz);
   const [newQuestion, setNewQuestion] = useState(emptyQ);
   const [saving, setSaving] = useState(false);
@@ -48,6 +51,37 @@ export default function AdminQuizManager() {
     if (expandedQuiz === quizId) { setExpandedQuiz(null); return; }
     setExpandedQuiz(quizId);
     loadQuestions(quizId);
+  };
+
+  const loadAccess = async (quizId) => {
+    if (showAccess === quizId) { setShowAccess(null); return; }
+    setShowAccess(quizId);
+    if (usersList.length === 0) {
+      try {
+        const u = await adminService.getUsers();
+        setUsersList(u);
+      } catch (err) {}
+    }
+    if (!assignments[quizId]) {
+      try {
+        const a = await quizService.adminGetAssignments(quizId);
+        setAssignments(prev => ({ ...prev, [quizId]: a.filter(x => x.accessStatus === 'active').map(x => x.userId._id) }));
+      } catch (err) {}
+    }
+  };
+
+  const toggleAssign = async (quizId, userId, isAssigned) => {
+    try {
+      if (isAssigned) {
+        await quizService.adminRevokeQuiz({ quizId, userId });
+        setAssignments(prev => ({ ...prev, [quizId]: prev[quizId].filter(id => id !== userId) }));
+      } else {
+        await quizService.adminAssignQuiz({ quizId, userId });
+        setAssignments(prev => ({ ...prev, [quizId]: [...(prev[quizId]||[]), userId] }));
+      }
+    } catch (err) {
+      alert('Failed to update assignment');
+    }
   };
 
   const handleCreateQuiz = async (e) => {
@@ -205,6 +239,9 @@ export default function AdminQuizManager() {
                     <Clock size={12} /> {quiz.duration || 30}min
                   </span>
 
+                  <button onClick={() => loadAccess(quiz._id)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${showAccess === quiz._id ? 'bg-indigo-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-indigo-500'}`}>
+                    <Lock size={12} /> Access
+                  </button>
                   {quiz.status !== 'active' ? (
                     <button onClick={() => handleStart(quiz._id)} disabled={quiz.status === 'ended'} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500 hover:bg-green-600 text-white text-xs font-bold transition disabled:opacity-40">
                       <Play size={12} /> Start
@@ -219,6 +256,39 @@ export default function AdminQuizManager() {
                   </button>
                 </div>
               </div>
+
+              {/* Access Management section */}
+              {showAccess === quiz._id && (
+                <div className="border-t border-slate-100 dark:border-slate-800 p-5 bg-indigo-50/50 dark:bg-indigo-900/10">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-black text-sm dark:text-white flex items-center gap-2"><Lock size={16} className="text-indigo-500"/> User Access Control</h4>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-60 overflow-y-auto custom-scrollbar">
+                    {usersList.map(u => {
+                      const isAssigned = (assignments[quiz._id] || []).includes(u._id);
+                      return (
+                        <div key={u._id} className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-xs font-bold uppercase overflow-hidden">
+                              {u.avatar ? <img src={u.avatar} className="w-full h-full object-cover"/> : u.name.substring(0, 2)}
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold dark:text-white line-clamp-1">{u.name}</p>
+                              <p className="text-[10px] text-slate-500 line-clamp-1">{u.email}</p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => toggleAssign(quiz._id, u._id, isAssigned)}
+                            className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${isAssigned ? 'bg-indigo-500 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
+                          >
+                            {isAssigned ? 'Assigned' : 'Assign'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Expanded questions section */}
               {expandedQuiz === quiz._id && (

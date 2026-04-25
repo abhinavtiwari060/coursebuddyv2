@@ -188,6 +188,10 @@ export const quizService = {
   adminUpdateQuestion: (qId, data) => api.put(`/api/admin/questions/${qId}`, data).then(r => r.data),
   adminDeleteQuestion: (qId) => api.delete(`/api/admin/questions/${qId}`).then(r => r.data),
   adminSetUserRole: (userId, quizRole) => api.put(`/api/admin/users/${userId}/quiz-role`, { quizRole }).then(r => r.data),
+  adminAssignQuiz: (data) => api.post('/api/admin/quiz/assign', data).then(r => r.data),
+  adminRevokeQuiz: (data) => api.post('/api/admin/quiz/revoke', data).then(r => r.data),
+  adminGetAssignments: (quizId) => api.get(`/api/admin/quiz/${quizId}/assignments`).then(r => r.data),
+  getAssignedQuizzes: () => api.get('/api/quiz/assigned').then(r => r.data),
 };
 
 // ── Progress Service ─────────────────────
