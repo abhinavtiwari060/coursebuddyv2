@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { 
   Folder, Play, ChevronRight, ChevronDown, 
   CheckCircle2, Clock, HardDrive, Search,
-  PlayCircle, FileVideo, FolderPlus, Layers
+  PlayCircle, FileVideo, FolderPlus, Layers, Loader2
 } from 'lucide-react';
 import { driveService } from '../api/api';
 import { useNavigate } from 'react-router-dom';
