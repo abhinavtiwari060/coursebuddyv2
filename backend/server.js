@@ -1214,38 +1214,64 @@ app.get('/api/admin/youtube/search-playlists', authMiddleware, adminMiddleware, 
 
 app.post('/api/progress/save', authMiddleware, async (req, res) => {
   try {
-    const { courseId, lastVideoId, watchedVideoId, watchPosition } = req.body;
+    let { courseId, lastVideoId, watchedVideoId, watchPosition } = req.body;
+
+    // Resolve courseId if it's a name
+    if (courseId && !mongoose.Types.ObjectId.isValid(courseId)) {
+      const course = await Course.findOne({ userId: req.user.id, name: courseId });
+      if (course) courseId = course._id;
+      else return res.status(404).json({ error: 'Course not found by name' });
+    }
+
+    if (!courseId) return res.status(400).json({ error: 'Course ID is required' });
 
     let progress = await UserProgress.findOne({ userId: req.user.id, courseId });
     if (!progress) {
       progress = new UserProgress({ userId: req.user.id, courseId });
     }
 
-    if (lastVideoId) progress.lastVideoId = lastVideoId;
+    if (lastVideoId && mongoose.Types.ObjectId.isValid(lastVideoId)) progress.lastVideoId = lastVideoId;
     if (watchPosition !== undefined) progress.watchPosition = watchPosition;
-    if (watchedVideoId && !progress.watchedVideos.map(String).includes(String(watchedVideoId))) {
-      progress.watchedVideos.push(watchedVideoId);
+    
+    if (watchedVideoId && mongoose.Types.ObjectId.isValid(watchedVideoId)) {
+      if (!progress.watchedVideos.map(String).includes(String(watchedVideoId))) {
+        progress.watchedVideos.push(watchedVideoId);
+      }
     }
 
     // Compute progress percent
-    const totalVideos = await Video.countDocuments({ userId: req.user.id, course: { $exists: true } });
-    if (totalVideos > 0) {
-      progress.progressPercent = Math.round((progress.watchedVideos.length / totalVideos) * 100);
+    // Find the course name to filter videos
+    const courseDoc = await Course.findById(courseId);
+    if (courseDoc) {
+      const totalVideos = await Video.countDocuments({ userId: req.user.id, course: courseDoc.name });
+      if (totalVideos > 0) {
+        progress.progressPercent = Math.round((progress.watchedVideos.length / totalVideos) * 100);
+      }
     }
 
     await progress.save();
     res.json(progress);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("[PROGRESS SAVE] Error:", err.message);
+    res.status(500).json({ error: 'Failed to save progress. Continuing playback.' });
   }
 });
 
 app.get('/api/progress/:courseId', authMiddleware, async (req, res) => {
   try {
-    const progress = await UserProgress.findOne({ userId: req.user.id, courseId: req.params.courseId });
+    let cid = req.params.courseId;
+
+    if (cid && !mongoose.Types.ObjectId.isValid(cid)) {
+      const course = await Course.findOne({ userId: req.user.id, name: cid });
+      if (course) cid = course._id;
+      else return res.json({}); // Not found is not an error here
+    }
+
+    const progress = await UserProgress.findOne({ userId: req.user.id, courseId: cid });
     res.json(progress || {});
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("[PROGRESS GET] Error:", err.message);
+    res.json({}); // Fail gracefully
   }
 });
 

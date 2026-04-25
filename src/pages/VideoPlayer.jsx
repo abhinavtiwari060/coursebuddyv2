@@ -25,17 +25,27 @@ export default function VideoPlayer() {
     return match ? match[1] : null;
   };
 
+  const progressTimerRef = useRef(null);
+  const lastSavedTime = useRef(0);
+
   useEffect(() => {
     loadData();
-    return () => clearInterval(progressTimerRef.current);
+    return () => {
+      if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    };
   }, [videoId]);
 
   const loadData = async () => {
     setLoading(true);
     try {
       const allVideos = await videoService.getAll();
-      // Filter to only this course's videos (by courseId or matching course name)
-      const courseVideos = allVideos.filter(v => v.courseId === courseId || String(v.courseId) === courseId || v.course === courseId);
+      // Filter to only this course's videos
+      const courseVideos = allVideos.filter(v => 
+        v.courseId === courseId || 
+        String(v.courseId) === courseId || 
+        v.course === courseId || 
+        v.courseName === courseId
+      );
       const sorted = [...courseVideos].sort((a, b) => (a.order || 0) - (b.order || 0));
       setVideos(sorted);
 
@@ -46,15 +56,18 @@ export default function VideoPlayer() {
       try {
         const prog = await progressService.get(courseId);
         setProgress(prog);
-      } catch {}
+      } catch (err) {
+        console.warn("[VIDEO] Failed to load progress, but continuing play:", err.message);
+      }
     } catch (err) {
-      console.error(err);
+      console.error("[VIDEO] Failed to load videos:", err);
     } finally {
       setLoading(false);
     }
   };
 
   const saveProgress = useCallback(async (watchedVideoId, position = 0) => {
+    if (!watchedVideoId) return;
     try {
       await progressService.save({
         courseId,
@@ -62,7 +75,10 @@ export default function VideoPlayer() {
         watchedVideoId,
         watchPosition: position,
       });
-    } catch {}
+    } catch (err) {
+      // Fail silently, don't crash the player
+      console.warn("[VIDEO] Progress save failed:", err.message);
+    }
   }, [courseId]);
 
   const handleComplete = async () => {
@@ -71,7 +87,9 @@ export default function VideoPlayer() {
       await videoService.markComplete(currentVideo._id);
       await saveProgress(currentVideo._id, 0);
       setVideos(vids => vids.map(v => v._id === currentVideo._id ? { ...v, completed: true } : v));
-    } catch {}
+    } catch (err) {
+      console.error("[VIDEO] Failed to mark complete:", err);
+    }
   };
 
   const navigateTo = (vid) => {
@@ -129,7 +147,7 @@ export default function VideoPlayer() {
       <div className="flex flex-1 overflow-hidden">
         {/* Main content */}
         <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-          {/* Player */}
+          {/* Player Error Boundary Wrapper */}
           <div className="w-full bg-black aspect-video relative flex items-center justify-center">
             {ytId ? (
               <ReactPlayer
@@ -141,22 +159,30 @@ export default function VideoPlayer() {
                 controls
                 playing
                 onDuration={setDuration}
+                onError={(e) => console.error("[VIDEO] Player error:", e)}
                 onProgress={({ playedSeconds }) => {
-                  if (Math.floor(playedSeconds) % 10 === 0) {
+                  const sec = Math.floor(playedSeconds);
+                  // Save progress every 10 seconds of play, only once per 10s mark
+                  if (sec > 0 && sec % 10 === 0 && sec !== lastSavedTime.current) {
+                    lastSavedTime.current = sec;
                     saveProgress(currentVideo._id, playedSeconds);
                   }
+                  // Auto mark complete at 90%
                   if (duration > 0 && playedSeconds > duration * 0.9 && !currentVideo.completed) {
                     handleComplete();
                   }
                 }}
               />
             ) : (
-              <div className="flex flex-col items-center gap-4 text-slate-400">
-                <PlayCircle size={64} className="opacity-30" />
-                <p className="text-sm">No embeddable video found.</p>
+              <div className="flex flex-col items-center gap-4 text-slate-400 p-10 text-center">
+                <PlayCircle size={64} className="opacity-20" />
+                <div>
+                  <p className="text-lg font-bold text-white mb-1">Unable to Load Video</p>
+                  <p className="text-sm">The video may be private, deleted, or from an unsupported platform.</p>
+                </div>
                 {currentVideo?.link && (
-                  <a href={currentVideo.link} target="_blank" rel="noreferrer" className="text-orange-400 hover:underline text-sm">
-                    Open externally →
+                  <a href={currentVideo.link} target="_blank" rel="noreferrer" className="mt-2 px-6 py-2 bg-white/10 hover:bg-white/20 rounded-xl transition text-sm font-bold flex items-center gap-2">
+                    Open Externally <ArrowLeft size={16} className="rotate-180" />
                   </a>
                 )}
               </div>
