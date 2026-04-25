@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import ThemeToggle from './ThemeToggle';
 import BugReport from './BugReport';
 import NotificationPanel from './NotificationPanel';
-import { BookOpen, Zap, Trophy, User, Bug, ChevronDown, LogOut, MessageSquare, Video, HardDrive } from 'lucide-react';
+import { BookOpen, Zap, Trophy, User, Bug, ChevronDown, LogOut, MessageSquare, Video } from 'lucide-react';
 
 function getInitials(name = '') {
   return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
@@ -108,13 +108,7 @@ export default function Navbar() {
                         <MessageSquare size={15} /> Thoughts
                       </Link>
                     )}
-                    <Link
-                      to="/dashboard"
-                      onClick={() => { setShowMenu(false); /* The app logic should handle switching to videos tab if needed, but for now just dashboard is safe */ }}
-                      className="flex items-center gap-2 px-4 py-3 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
-                    >
-                      <HardDrive size={15} /> Drive Library
-                    </Link>
+
 
                     {user?.features?.canReportBug !== false && (
                       <button

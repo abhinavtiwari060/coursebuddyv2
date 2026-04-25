@@ -7,13 +7,12 @@ import {
   Users, Trash2, Clock, PlayCircle, LogOut, ShieldAlert, X, BookOpen,
   CheckCircle2, Trophy, Medal, Crown, BarChart2, Activity, Eye,
   Search, Filter, ChevronDown, TrendingUp, Flame, AlertTriangle, Send, Palette,
-  Bug, ToggleLeft, ToggleRight, Circle, Settings as SettingsIcon, HardDrive, Sparkles
+  Bug, ToggleLeft, ToggleRight, Circle, Settings as SettingsIcon, Sparkles
 } from 'lucide-react';
 import AdminUserLimit from '../components/AdminUserLimit';
 import SuggestedPlaylistsAdmin from '../components/SuggestedPlaylistsAdmin';
 import AdminCourseCreator from '../components/AdminCourseCreator';
 import AdminQuizManager from '../components/AdminQuizManager';
-import AdminDriveManager from '../components/AdminDriveManager';
 import AdminAIQuiz from '../components/AdminAIQuiz';
 import { quizService } from '../api/api';
 
@@ -26,7 +25,6 @@ const TABS = [
   { id: 'users',         label: 'Users',          icon: <Users size={16} />,       color: 'slate'  },
   { id: 'leaderboard',   label: 'Leaderboard',    icon: <Trophy size={16} />,      color: 'amber'  },
   { id: 'courses',       label: 'Course Creator', icon: <BookOpen size={16} />,    color: 'orange' },
-  { id: 'drive',         label: 'Drive Fetcher',  icon: <HardDrive size={16} />,   color: 'blue'   },
   { id: 'quiz',          label: 'Quiz Manager',   icon: <BarChart2 size={16} />,   color: 'purple' },
   { id: 'ai_quiz',       label: 'AI Quiz',        icon: <Sparkles size={16} />,    color: 'violet' },
   { id: 'permissions',   label: 'Permissions',    icon: <ShieldAlert size={16} />, color: 'indigo' },
@@ -35,7 +33,7 @@ const TABS = [
 ];
 
 const FEATURE_LABELS = {
-  canAccessLibrary: 'Drive Library',
+
   canAccessCourses: 'YouTube Courses',
   canAddCourse: 'Add Course',
   canDeleteCourse: 'Delete Course',
@@ -793,13 +791,6 @@ export default function AdminDashboard() {
         {activeTab === 'courses' && (
           <div className="max-w-4xl mx-auto">
             <AdminCourseCreator />
-          </div>
-        )}
-
-        {/* Drive Fetcher Tab */}
-        {activeTab === 'drive' && (
-          <div className="max-w-4xl mx-auto">
-            <AdminDriveManager />
           </div>
         )}
 

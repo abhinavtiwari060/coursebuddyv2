@@ -18,16 +18,15 @@ import CourseProgress from '../components/CourseProgress';
 import GoalAnalytics from '../components/GoalAnalytics';
 import DataTools from '../components/DataTools';
 import Confetti from 'react-confetti';
-import DriveCourseExplorer from '../components/DriveCourseExplorer';
-import SuggestedPlaylists from '../components/SuggestedPlaylists';
 import LiveQuizBanner from '../components/LiveQuizBanner';
 
 
-import api, { videoService, courseService, streakService, driveService } from '../api/api';
+
+import api, { videoService, courseService, streakService } from '../api/api';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 
-import { Lightbulb, GripVertical, LayoutDashboard, Video, BarChart2, BookOpen, Settings, Trophy, User, HardDrive, ShieldAlert, ArrowLeft } from 'lucide-react';
+import { Lightbulb, GripVertical, LayoutDashboard, Video, BarChart2, BookOpen, Settings, Trophy, ShieldAlert, ArrowLeft, PlayCircle, User } from 'lucide-react';
 
 const TABS = [
   { id: 'dashboard', label: 'Study Table', icon: <LayoutDashboard size={18} /> },
@@ -43,53 +42,53 @@ export default function Home() {
 
   const [courses, setCourses] = useState([]);
   const [videos, setVideos] = useState([]);
-  const [driveCourses, setDriveCourses] = useState([]);
   const [assignedQuizzes, setAssignedQuizzes] = useState([]);
   
   // View state
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [selectedCourse, setSelectedCourse] = useState(null); // { type: 'youtube' | 'drive', data: Object }
+  const [selectedCourse, setSelectedCourse] = useState(null);
   
   const [streak, setStreak] = useState({ count: 0, lastDate: null });
   const [goalTarget, setGoalTarget] = useState(3);
   const [filters, setFilters] = useState({ search: '', course: 'All', status: 'Pending', platform: 'All' });
   const [randomSuggestion, setRandomSuggestion] = useState(null);
 
-  // Load Initial Data
+  // Load Initial Data — dep array only contains user._id so this
+  // runs exactly once per login, not on every React Router render.
   useEffect(() => {
     if (!user) { navigate('/login'); return; }
     if (user.role === 'admin') { navigate('/admin'); return; }
 
+    let cancelled = false;
+
     const loadData = async () => {
       try {
-        console.log(`[DASHBOARD] Fetching content for user: ${user.email}`);
-        const [vids, crs, strk, driveCrs, quizzes] = await Promise.all([
+        const [vids, crs, strk, quizzes] = await Promise.all([
           videoService.getAll(),
           courseService.getAll(),
           streakService.get(),
-          driveService.getCourses().catch(() => []),
           api.get('/api/quiz/assigned').then(r => r.data).catch(() => []),
-          refreshUser() // Fetch latest permissions
+          refreshUser(),
         ]);
-        console.log(`[DASHBOARD] Content loaded: ${vids.length} videos, ${crs.length} courses, ${driveCrs.length} drive courses`);
-        console.log(`[DASHBOARD] Active Features:`, user.features);
 
+        if (cancelled) return;
 
-        // Videos already come sorted by order from backend
         setVideos(vids);
         setCourses(crs.map(c => ({ id: c._id, name: c.name })));
-        setDriveCourses(driveCrs);
         setAssignedQuizzes(quizzes);
-        
+
         if (strk) {
           setStreak({ count: strk.currentStreak, lastDate: strk.lastActiveDate });
         }
       } catch (err) {
-        console.error("Failed fetching data", err);
+        if (!cancelled) console.error('[Dashboard] Failed to load data:', err);
       }
     };
+
     loadData();
-  }, [user?._id, navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { cancelled = true; };
+  }, [user?._id]); // ← navigate is stable; omitting it stops repeated fetches
 
   useEffect(() => {
     const pending = videos.filter(v => !v.completed);
@@ -127,11 +126,12 @@ export default function Home() {
   };
 
   useEffect(() => {
-    // Poll for permission/feature updates every 30 seconds
+    // Poll for permission/feature updates every 60 seconds (reduced from 30s)
     const pollInterval = setInterval(() => {
-      refreshUser();
-    }, 30000);
+      refreshUser().catch(() => {}); // silent fail — network may be flaky
+    }, 60000);
     return () => clearInterval(pollInterval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleToggleComplete = async (id) => {
@@ -252,29 +252,49 @@ export default function Home() {
     <div className="min-h-screen flex flex-col font-sans relative">
       <Navbar />
 
-      <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-orange-200/60 dark:border-slate-800 sticky top-[65px] z-10">
-        <div className="max-w-7xl mx-auto px-4 flex gap-1 overflow-x-auto">
-          {TABS.filter(tab => {
-            if (tab.restricted && user?.approvalStatus !== 'approved') return false;
-            return !tab.feature || user?.features?.[tab.feature] !== false;
-          }).map(tab => (
+      <div className="flex flex-1 max-w-[1600px] mx-auto w-full">
+        {/* Modern Sidebar */}
+        <aside className="hidden lg:flex w-64 flex-col gap-2 p-6 border-r border-slate-200 dark:border-slate-800/50 sticky top-[69px] h-[calc(100vh-69px)] overflow-y-auto bg-slate-50/50 dark:bg-slate-950/50">
+          <div className="mb-4">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2 px-3">Main Menu</p>
+            {TABS.filter(tab => {
+              if (tab.restricted && user?.approvalStatus !== 'approved') return false;
+              return !tab.feature || user?.features?.[tab.feature] !== false;
+            }).map(tab => (
+              <button 
+                key={tab.id} 
+                onClick={() => setActiveTab(tab.id)} 
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all ${
+                  activeTab === tab.id 
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
+                }`}
+              >
+                {tab.icon}{tab.label}
+              </button>
+            ))}
+          </div>
 
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-5 py-3.5 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === tab.id ? 'border-orange-500 text-orange-600 dark:text-orange-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>
-              {tab.icon}{tab.label}
-            </button>
-          ))}
-          {user?.features?.canUseLeaderboard !== false && (
-            <Link to="/leaderboard" className="flex items-center gap-2 px-5 py-3.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 whitespace-nowrap transition-all">
-              <Trophy size={18} /> Leaderboard
+          <div className="mt-auto pt-6 border-t border-slate-200 dark:border-slate-800">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2 px-3">Quick Links</p>
+            {user?.features?.canUseLeaderboard !== false && (
+              <Link to="/leaderboard" className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-all">
+                <Trophy size={18} /> Leaderboard
+              </Link>
+            )}
+            {user?.features?.canUseCommunity !== false && (
+              <Link to="/thoughts" className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-all">
+                <Lightbulb size={18} /> Community
+              </Link>
+            )}
+            <Link to="/profile" className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-all">
+              <User size={18} /> Profile
             </Link>
-          )}
-          <Link to="/profile" className="flex items-center gap-2 px-5 py-3.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-orange-600 dark:hover:text-orange-400 whitespace-nowrap transition-all">
-            <User size={18} /> Profile
-          </Link>
-        </div>
-      </div>
+          </div>
+        </aside>
 
-      <main className="flex-1 max-w-7xl mx-auto px-4 py-8 w-full">
+        {/* Main Content Area */}
+        <main className="flex-1 p-4 lg:p-8 min-w-0">
         {user?.approvalStatus !== 'approved' && (
           <div className="mb-8 p-6 rounded-3xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 flex items-center gap-4 animate-pulse-subtle">
             <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-amber-600">
@@ -292,52 +312,69 @@ export default function Home() {
             {!selectedCourse ? (
               <>
                 <LiveQuizBanner />
-                <Dashboard videos={videos} driveCourses={driveCourses} />
+                <Dashboard videos={videos} />
                 
+                {/* Continue Learning Banner */}
+                {videos.filter(v => !v.completed).length > 0 && (
+                  <div className="mb-8">
+                    <h2 className="text-xl font-black dark:text-white mb-4 flex items-center gap-2">
+                      <PlayCircle className="text-blue-500" size={20} /> Continue Learning
+                    </h2>
+                    {(() => {
+                      const nextVideo = videos.filter(v => !v.completed).sort((a,b) => (a.order || 0) - (b.order || 0))[0];
+                      return (
+                        <div className="glass-card p-6 rounded-3xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 hover:shadow-xl hover:-translate-y-1 transition border-blue-100 dark:border-blue-900/30">
+                          <div className="flex items-center gap-4">
+                            <div className="relative flex-shrink-0 w-32 h-20 rounded-xl overflow-hidden bg-slate-900">
+                              {nextVideo.thumbnail ? (
+                                <img src={nextVideo.thumbnail} alt="" className="w-full h-full object-cover opacity-80" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-blue-500 bg-blue-900/30"><Video size={24} /></div>
+                              )}
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                                <PlayCircle size={32} className="text-white drop-shadow-lg" />
+                              </div>
+                            </div>
+                            <div>
+                              <span className="badge bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 mb-2">Up Next</span>
+                              <h3 className="font-bold text-lg dark:text-white line-clamp-1">{nextVideo.title}</h3>
+                              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{nextVideo.course}</p>
+                            </div>
+                          </div>
+                          <Link 
+                            to={`/course/${nextVideo.course}/video/${nextVideo._id}`}
+                            className="btn-primary px-6 py-3 rounded-2xl whitespace-nowrap w-full md:w-auto text-center"
+                          >
+                            Resume Video
+                          </Link>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
                 {/* Course Grid */}
                 <div>
                   <div className="flex items-center justify-between mb-6">
                     <h2 className="text-2xl font-black dark:text-white flex items-center gap-3">
-                      <BookOpen className="text-orange-500" />
+                      <BookOpen className="text-blue-500" />
                       My Study Library
                     </h2>
-                    <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-                      <button 
-                        onClick={() => setFilters(prev => ({ ...prev, platform: 'All' }))}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition ${filters.platform === 'All' ? 'bg-white dark:bg-slate-700 shadow-sm text-orange-600 dark:text-orange-400' : 'text-slate-500 hover:text-slate-700'}`}
-                      >
-                        All
-                      </button>
-                      <button 
-                        onClick={() => setFilters(prev => ({ ...prev, platform: 'YouTube' }))}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition ${filters.platform === 'YouTube' ? 'bg-white dark:bg-slate-700 shadow-sm text-orange-600 dark:text-orange-400' : 'text-slate-500 hover:text-slate-700'}`}
-                      >
-                        YouTube
-                      </button>
-                      <button 
-                        onClick={() => setFilters(prev => ({ ...prev, platform: 'Drive' }))}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition ${filters.platform === 'Drive' ? 'bg-white dark:bg-slate-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-slate-500 hover:text-slate-700'}`}
-                      >
-                        Drive
-                      </button>
-                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {/* YouTube Courses */}
-                    {(filters.platform === 'All' || filters.platform === 'YouTube') && courses.map(course => {
+                    {courses.map(course => {
                       const courseVideos = videos.filter(v => v.course === course.name);
                       const total = courseVideos.length;
                       const completed = courseVideos.filter(v => v.completed).length;
                       const progress = total === 0 ? 0 : Math.round((completed / total) * 100);
-                      
                       return (
                         <div 
                           key={course.id} 
                           onClick={() => setSelectedCourse({ type: 'youtube', data: course })}
                           className="glass-card p-6 rounded-[2rem] hover:shadow-xl transition-all cursor-pointer group hover:-translate-y-1"
                         >
-                          <div className="w-14 h-14 bg-orange-100 dark:bg-orange-900/30 rounded-2xl flex items-center justify-center text-orange-500 mb-5 group-hover:scale-110 transition shadow-inner">
+                          <div className="w-14 h-14 bg-red-100 dark:bg-red-900/30 rounded-2xl flex items-center justify-center text-red-500 mb-5 group-hover:scale-110 transition shadow-inner">
                             <BookOpen size={28} />
                           </div>
                           <h3 className="font-bold text-lg dark:text-white mb-2 line-clamp-1">{course.name}</h3>
@@ -346,35 +383,18 @@ export default function Home() {
                             <span className="badge bg-green-100 dark:bg-green-900/30 text-green-600 font-bold">{progress}% Done</span>
                           </div>
                           <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                            <div className="h-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all duration-500" style={{width: `${progress}%`}} />
+                            <div className="h-full bg-gradient-to-r from-purple-500 to-indigo-400 transition-all duration-500" style={{width: `${progress}%`}} />
                           </div>
                         </div>
                       );
                     })}
 
-                    {/* Drive Courses */}
-                    {(filters.platform === 'All' || filters.platform === 'Drive') && driveCourses.map(course => (
-                      <div 
-                        key={course.folderId} 
-                        onClick={() => setSelectedCourse({ type: 'drive', data: course })}
-                        className="glass-card p-6 rounded-[2rem] hover:shadow-xl transition-all cursor-pointer group hover:-translate-y-1 border-blue-100 dark:border-blue-900/30"
-                      >
-                        <div className="w-14 h-14 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center text-blue-500 mb-5 group-hover:scale-110 transition shadow-inner">
-                          <HardDrive size={28} />
-                        </div>
-                        <h3 className="font-bold text-lg dark:text-white mb-2 line-clamp-1">{course.folderName}</h3>
-                        <div className="flex items-center gap-3 text-xs text-slate-500 mb-6">
-                          <span className="flex items-center gap-1"><Video size={14} /> {course.totalVideos} Assets</span>
-                          <span className="badge bg-blue-100 dark:bg-blue-900/30 text-blue-600 font-bold uppercase tracking-tighter">Drive</span>
-                        </div>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest truncate">Synced: {new Date(course.lastSynced).toLocaleDateString()}</p>
-                      </div>
-                    ))}
-
-                    {courses.length === 0 && driveCourses.length === 0 && (
+                    {courses.length === 0 && (
                       <div className="col-span-full py-20 text-center bg-slate-50/50 dark:bg-slate-900/50 rounded-[3rem] border-2 border-dashed border-slate-200 dark:border-slate-800">
-                        <p className="text-slate-400 font-bold">Your study library is empty.</p>
-                        <button onClick={() => setActiveTab('courses')} className="mt-4 text-orange-500 font-black hover:underline">Add Your First Course →</button>
+                        <BookOpen size={48} className="mx-auto mb-4 text-slate-300 dark:text-slate-600 opacity-50" />
+                        <h3 className="text-xl font-bold dark:text-white">No courses assigned yet</h3>
+                        <p className="text-slate-400 mt-2 text-sm max-w-sm mx-auto">You haven't started any courses. Ask your admin to assign you one.</p>
+                        <button onClick={() => setActiveTab('courses')} className="mt-6 text-blue-600 dark:text-blue-400 font-black hover:underline flex items-center gap-2 justify-center mx-auto">Browse Courses <ArrowLeft size={16} className="rotate-180" /></button>
                       </div>
                     )}
                   </div>
@@ -398,13 +418,13 @@ export default function Home() {
                   Back to All Courses
                 </button>
 
-                {selectedCourse.type === 'youtube' ? (
+                {selectedCourse?.type === 'youtube' && (
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     <div className="lg:col-span-2 space-y-6">
                       <div className="flex items-center justify-between mb-2">
                         <div>
                           <h2 className="text-3xl font-black dark:text-white capitalize">{selectedCourse.data.name}</h2>
-                          <p className="text-slate-500 text-sm mt-1">Course Curriculum & Progress</p>
+                          <p className="text-slate-500 text-sm mt-1">Course Curriculum &amp; Progress</p>
                         </div>
                         <div className="flex items-center gap-3">
                            <FilterBar filters={filters} setFilters={setFilters} courses={courses} hideCourseFilter />
@@ -423,7 +443,7 @@ export default function Home() {
                                     <Draggable key={vidId} draggableId={vidId} index={idx}>
                                       {(prov, snapshot) => (
                                         <div ref={prov.innerRef} {...prov.draggableProps} className={`relative ${snapshot.isDragging ? 'opacity-80 scale-[1.02] z-50 shadow-2xl' : ''} transition-all duration-200`}>
-                                          <div {...prov.dragHandleProps} className="absolute top-1/2 -translate-y-1/2 left-3 cursor-grab text-slate-300 dark:text-slate-700 hover:text-orange-400 z-10 p-2" title="Drag to reorder">
+                                          <div {...prov.dragHandleProps} className="absolute top-1/2 -translate-y-1/2 left-3 cursor-grab text-slate-300 dark:text-slate-700 hover:text-blue-400 z-10 p-2" title="Drag to reorder">
                                             <GripVertical size={18} />
                                           </div>
                                           <div className="pl-10">
@@ -452,8 +472,6 @@ export default function Home() {
                        <PlaylistImport courses={courses} onAddVideo={handleAddVideo} />
                     </div>
                   </div>
-                ) : (
-                  <DriveCourseExplorer initialCourse={selectedCourse.data} />
                 )}
               </div>
             )}
@@ -557,6 +575,7 @@ export default function Home() {
            </div>
         )}
       </main>
+      </div>
       <Footer />
     </div>
   );

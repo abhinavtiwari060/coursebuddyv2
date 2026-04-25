@@ -7,7 +7,6 @@ import {
   Clock, Flame, Trophy, Calendar, LogOut, ArrowLeft, Bell, BellOff
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import UserDriveManager from '../components/UserDriveManager';
 
 export default function Profile() {
   const { user: authUser, logout } = useAuth();
@@ -262,9 +261,7 @@ export default function Profile() {
         </div>
 
         {/* Integration Section */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <UserDriveManager />
-          
+        <div className="grid grid-cols-1 gap-6">
           {/* Progress bar */}
           <div className="glass-card p-6 rounded-2xl border border-slate-200 dark:border-slate-800">
             <div className="flex justify-between items-center mb-3">
