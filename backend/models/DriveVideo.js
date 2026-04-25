@@ -8,14 +8,14 @@ const driveVideoSchema = new mongoose.Schema({
   // Hierarchy breadcrumb: ['CourseName', 'SubjectName', 'ChapterName']
   pathParts: { type: [String], default: [] },
   // Denormalized for fast querying
-  courseName: { type: String, default: '' },   // pathParts[0]
-  subjectName: { type: String, default: '' },  // pathParts[1]
-  chapterName: { type: String, default: '' },  // pathParts[2]
+  courseName: { type: String, default: '' },   
+  subjectName: { type: String, default: '' },  
+  chapterName: { type: String, default: '' },  
+  parentFolderId: { type: String, default: '' }, // Direct parent folder ID
   thumbnail: { type: String, default: '' },
-  duration: { type: Number, default: 0 },       // seconds (Drive doesn't always provide)
-  size: { type: Number, default: 0 },           // bytes
-  driveOrder: { type: Number, default: 0 },     // order within parent folder
-  // Player state per-user is handled in UserProgress; this is global metadata
+  duration: { type: Number, default: 0 },       
+  size: { type: Number, default: 0 },           
+  driveOrder: { type: Number, default: 0 },     
   createdAtDrive: { type: Date, default: null },
 }, { timestamps: true });
 

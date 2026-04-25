@@ -30,31 +30,27 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Lightbulb, GripVertical, LayoutDashboard, Video, BarChart2, BookOpen, Settings, Trophy, User, HardDrive, ShieldAlert } from 'lucide-react';
 
 const TABS = [
-  { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
-  { id: 'videos',    label: 'Videos',    icon: <Video size={18} />, feature: 'canAccessCourses', restricted: true },
+  { id: 'dashboard', label: 'Study Table', icon: <LayoutDashboard size={18} /> },
   { id: 'quizzes',   label: 'Live Quizzes', icon: <Trophy size={18} />, feature: 'canUseLeaderboard', restricted: true },
   { id: 'analytics', label: 'Analytics', icon: <BarChart2 size={18} />, feature: 'canUseLeaderboard', restricted: true },
-  { id: 'courses',   label: 'Courses',   icon: <BookOpen size={18} />, feature: 'canAccessCourses', restricted: true },
+  { id: 'courses',   label: 'Course Manager',   icon: <BookOpen size={18} />, feature: 'canAccessCourses', restricted: true },
   { id: 'settings',  label: 'Settings',  icon: <Settings size={18} /> },
 ];
 
-
-
-
 export default function Home() {
   const { user, refreshUser } = useAuth();
-
   const navigate = useNavigate();
 
   const [courses, setCourses] = useState([]);
   const [videos, setVideos] = useState([]);
   const [driveCourses, setDriveCourses] = useState([]);
-  const [videoTab, setVideoTab] = useState('youtube'); // 'youtube' or 'drive'
-
+  
+  // View state
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [selectedCourse, setSelectedCourse] = useState(null); // { type: 'youtube' | 'drive', data: Object }
+  
   const [streak, setStreak] = useState({ count: 0, lastDate: null });
   const [goalTarget, setGoalTarget] = useState(3);
-  
-  const [activeTab, setActiveTab] = useState('dashboard');
   const [filters, setFilters] = useState({ search: '', course: 'All', status: 'Pending', platform: 'All' });
   const [randomSuggestion, setRandomSuggestion] = useState(null);
 
@@ -289,109 +285,174 @@ export default function Home() {
         )}
 
         {activeTab === 'dashboard' && (
-
-          <>
-            <LiveQuizBanner />
-            <SuggestedPlaylists />
-            <Dashboard videos={videos} driveCourses={driveCourses} />
-            <Quotes />
-
-            <GoalAnalytics videos={videos} streak={streak.count} goalTarget={goalTarget} onUpdateGoal={setGoalTarget} />
-            <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <CalendarView videos={videos} />
-              <Badges videos={videos} streak={streak.count} />
-            </div>
-          </>
-        )}
-
-        {activeTab === 'videos' && (
-          <div className="w-full">
-            {/* INNER VIDEO TABS */}
-            <div className="flex gap-4 border-b border-slate-200 dark:border-slate-800 mb-8">
-              <button 
-                onClick={() => setVideoTab('youtube')}
-                className={`py-3 px-4 font-bold border-b-2 transition-all ${videoTab === 'youtube' ? 'border-orange-500 text-orange-500' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-              >
-                My Videos
-              </button>
-              {user?.features?.canAccessLibrary !== false && (
-                <button 
-                  onClick={() => setVideoTab('drive')}
-                  className={`py-3 px-4 font-bold border-b-2 transition-all ${videoTab === 'drive' ? 'border-blue-500 text-blue-500' : 'border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2'}`}
-                >
-                  <HardDrive size={16} className={videoTab === 'drive' ? 'text-blue-500' : 'text-slate-400 opacity-50'} />
-                  Drive Library
-                </button>
-              )}
-
-            </div>
-
-            {videoTab === 'youtube' ? (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 space-y-6">
-                  {randomSuggestion && (
-                <div className="glass-card bg-orange-50/50 dark:bg-slate-800/50 p-5 rounded-2xl flex items-center gap-5 shadow-sm border border-orange-200/50 dark:border-slate-700">
-                  <div className="w-12 h-12 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-500 flex items-center justify-center rounded-2xl flex-shrink-0 animate-bounce-subtle">
-                    <Lightbulb size={24} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-xs font-black text-orange-500 tracking-wider uppercase">Next to Watch</span>
-                    <p className="font-bold text-slate-800 dark:text-slate-200 truncate mt-0.5">{randomSuggestion.title}</p>
-                  </div>
-                  <button onClick={() => window.open(randomSuggestion.link, '_blank')} className="btn-primary px-5 py-2.5 rounded-xl font-bold flex-shrink-0 text-sm shadow-sm shadow-orange-500/20">
-                    Play
-                  </button>
-                </div>
-              )}
-
-              <FilterBar filters={filters} setFilters={setFilters} courses={courses} />
-
-              <DragDropContext onDragEnd={handleDragEnd}>
-                <Droppable droppableId="videos">
-                  {(provided) => (
-                    <div {...provided.droppableProps} ref={provided.innerRef} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {filteredVideos.map((video, idx) => {
-                        const vidId = video._id || video.id;
-                        return (
-                          <Draggable key={vidId} draggableId={vidId} index={idx}>
-                            {(prov, snapshot) => (
-                              <div ref={prov.innerRef} {...prov.draggableProps} className={`relative ${snapshot.isDragging ? 'opacity-80 scale-[1.05] z-50 shadow-2xl' : ''} transition-all duration-200`}>
-                                <div {...prov.dragHandleProps} className="absolute top-3 right-3 cursor-grab text-slate-300 dark:text-slate-600 hover:text-orange-400 z-10 p-2" title="Drag to reorder">
-                                  <GripVertical size={18} />
-                                </div>
-                                <VideoCard
-                                  video={video}
-                                  onToggleComplete={handleToggleComplete}
-                                  onUpdateNotes={handleUpdateNotes}
-                                  onDelete={handleDeleteVideo}
-                                  sequenceNumber={!video.completed ? video._seqNum : undefined}
-                                />
-                              </div>
-                            )}
-                          </Draggable>
-                        );
-                      })}
-                      {provided.placeholder}
-                      {filteredVideos.length === 0 && (
-                        <div className="col-span-full py-16 text-center font-bold text-slate-400 bg-white/40 dark:bg-slate-900/40 rounded-3xl border border-dashed border-slate-300 dark:border-slate-700">
-                          {videos.length === 0 ? "You haven't added any videos yet! Start building your curriculum." : "No videos match your filters."}
-                        </div>
-                      )}
+          <div className="space-y-8">
+            {!selectedCourse ? (
+              <>
+                <LiveQuizBanner />
+                <Dashboard videos={videos} driveCourses={driveCourses} />
+                
+                {/* Course Grid */}
+                <div>
+                  <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-2xl font-black dark:text-white flex items-center gap-3">
+                      <BookOpen className="text-orange-500" />
+                      My Study Library
+                    </h2>
+                    <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+                      <button 
+                        onClick={() => setFilters(prev => ({ ...prev, platform: 'All' }))}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition ${filters.platform === 'All' ? 'bg-white dark:bg-slate-700 shadow-sm text-orange-600 dark:text-orange-400' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                        All
+                      </button>
+                      <button 
+                        onClick={() => setFilters(prev => ({ ...prev, platform: 'YouTube' }))}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition ${filters.platform === 'YouTube' ? 'bg-white dark:bg-slate-700 shadow-sm text-orange-600 dark:text-orange-400' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                        YouTube
+                      </button>
+                      <button 
+                        onClick={() => setFilters(prev => ({ ...prev, platform: 'Drive' }))}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition ${filters.platform === 'Drive' ? 'bg-white dark:bg-slate-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                        Drive
+                      </button>
                     </div>
-                  )}
-                </Droppable>
-              </DragDropContext>
-            </div>
+                  </div>
 
-            <div className="space-y-6">
-              <StreakCard streak={streak.count} />
-              {user?.features?.canUsePomodoro !== false && <Pomodoro />}
-                <AddVideoForm courses={courses} onAddVideo={handleAddVideo} />
-                <PlaylistImport courses={courses} onAddVideo={handleAddVideo} />
-              </div>
-            </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    {/* YouTube Courses */}
+                    {(filters.platform === 'All' || filters.platform === 'YouTube') && courses.map(course => {
+                      const courseVideos = videos.filter(v => v.course === course.name);
+                      const total = courseVideos.length;
+                      const completed = courseVideos.filter(v => v.completed).length;
+                      const progress = total === 0 ? 0 : Math.round((completed / total) * 100);
+                      
+                      return (
+                        <div 
+                          key={course.id} 
+                          onClick={() => setSelectedCourse({ type: 'youtube', data: course })}
+                          className="glass-card p-6 rounded-[2rem] hover:shadow-xl transition-all cursor-pointer group hover:-translate-y-1"
+                        >
+                          <div className="w-14 h-14 bg-orange-100 dark:bg-orange-900/30 rounded-2xl flex items-center justify-center text-orange-500 mb-5 group-hover:scale-110 transition shadow-inner">
+                            <BookOpen size={28} />
+                          </div>
+                          <h3 className="font-bold text-lg dark:text-white mb-2 line-clamp-1">{course.name}</h3>
+                          <div className="flex items-center gap-3 text-xs text-slate-500 mb-6">
+                            <span className="flex items-center gap-1"><Video size={14} /> {total} Lessons</span>
+                            <span className="badge bg-green-100 dark:bg-green-900/30 text-green-600 font-bold">{progress}% Done</span>
+                          </div>
+                          <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                            <div className="h-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all duration-500" style={{width: `${progress}%`}} />
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Drive Courses */}
+                    {(filters.platform === 'All' || filters.platform === 'Drive') && driveCourses.map(course => (
+                      <div 
+                        key={course.folderId} 
+                        onClick={() => setSelectedCourse({ type: 'drive', data: course })}
+                        className="glass-card p-6 rounded-[2rem] hover:shadow-xl transition-all cursor-pointer group hover:-translate-y-1 border-blue-100 dark:border-blue-900/30"
+                      >
+                        <div className="w-14 h-14 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center text-blue-500 mb-5 group-hover:scale-110 transition shadow-inner">
+                          <HardDrive size={28} />
+                        </div>
+                        <h3 className="font-bold text-lg dark:text-white mb-2 line-clamp-1">{course.folderName}</h3>
+                        <div className="flex items-center gap-3 text-xs text-slate-500 mb-6">
+                          <span className="flex items-center gap-1"><Video size={14} /> {course.totalVideos} Assets</span>
+                          <span className="badge bg-blue-100 dark:bg-blue-900/30 text-blue-600 font-bold uppercase tracking-tighter">Drive</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest truncate">Synced: {new Date(course.lastSynced).toLocaleDateString()}</p>
+                      </div>
+                    ))}
+
+                    {courses.length === 0 && driveCourses.length === 0 && (
+                      <div className="col-span-full py-20 text-center bg-slate-50/50 dark:bg-slate-900/50 rounded-[3rem] border-2 border-dashed border-slate-200 dark:border-slate-800">
+                        <p className="text-slate-400 font-bold">Your study library is empty.</p>
+                        <button onClick={() => setActiveTab('courses')} className="mt-4 text-orange-500 font-black hover:underline">Add Your First Course →</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <Quotes />
+                <GoalAnalytics videos={videos} streak={streak.count} goalTarget={goalTarget} onUpdateGoal={setGoalTarget} />
+                <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <CalendarView videos={videos} />
+                  <Badges videos={videos} streak={streak.count} />
+                </div>
+              </>
             ) : (
-              <DriveCourseExplorer />
+              <div className="animate-fade-in">
+                {/* Back Button */}
+                <button 
+                  onClick={() => setSelectedCourse(null)}
+                  className="mb-8 flex items-center gap-2 text-slate-500 hover:text-orange-500 font-bold transition group"
+                >
+                  <ArrowLeft size={20} className="group-hover:-translate-x-1 transition" />
+                  Back to All Courses
+                </button>
+
+                {selectedCourse.type === 'youtube' ? (
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div className="lg:col-span-2 space-y-6">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <h2 className="text-3xl font-black dark:text-white capitalize">{selectedCourse.data.name}</h2>
+                          <p className="text-slate-500 text-sm mt-1">Course Curriculum & Progress</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                           <FilterBar filters={filters} setFilters={setFilters} courses={courses} hideCourseFilter />
+                        </div>
+                      </div>
+
+                      <DragDropContext onDragEnd={handleDragEnd}>
+                        <Droppable droppableId="videos">
+                          {(provided) => (
+                            <div {...provided.droppableProps} ref={provided.innerRef} className="grid grid-cols-1 gap-4">
+                              {videos
+                                .filter(v => v.course === selectedCourse.data.name && (!filters.search || v.title.toLowerCase().includes(filters.search.toLowerCase())))
+                                .map((video, idx) => {
+                                  const vidId = video._id || video.id;
+                                  return (
+                                    <Draggable key={vidId} draggableId={vidId} index={idx}>
+                                      {(prov, snapshot) => (
+                                        <div ref={prov.innerRef} {...prov.draggableProps} className={`relative ${snapshot.isDragging ? 'opacity-80 scale-[1.02] z-50 shadow-2xl' : ''} transition-all duration-200`}>
+                                          <div {...prov.dragHandleProps} className="absolute top-1/2 -translate-y-1/2 left-3 cursor-grab text-slate-300 dark:text-slate-700 hover:text-orange-400 z-10 p-2" title="Drag to reorder">
+                                            <GripVertical size={18} />
+                                          </div>
+                                          <div className="pl-10">
+                                            <VideoCard
+                                              video={video}
+                                              onToggleComplete={handleToggleComplete}
+                                              onUpdateNotes={handleUpdateNotes}
+                                              onDelete={handleDeleteVideo}
+                                              sequenceNumber={!video.completed ? video._seqNum : undefined}
+                                            />
+                                          </div>
+                                        </div>
+                                      )}
+                                    </Draggable>
+                                  );
+                                })}
+                              {provided.placeholder}
+                            </div>
+                          )}
+                        </Droppable>
+                      </DragDropContext>
+                    </div>
+                    <div className="space-y-6 pt-[84px]">
+                       <StreakCard streak={streak.count} />
+                       <AddVideoForm courses={courses} initialCourse={selectedCourse.data.name} onAddVideo={handleAddVideo} />
+                       <PlaylistImport courses={courses} onAddVideo={handleAddVideo} />
+                    </div>
+                  </div>
+                ) : (
+                  <DriveCourseExplorer initialCourse={selectedCourse.data} />
+                )}
+              </div>
             )}
           </div>
         )}

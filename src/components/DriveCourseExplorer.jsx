@@ -2,15 +2,16 @@ import { useState, useEffect } from 'react';
 import { 
   Folder, Play, ChevronRight, ChevronDown, 
   CheckCircle2, Clock, HardDrive, Search,
-  PlayCircle, FileVideo, FolderPlus, Layers, Loader2
+  PlayCircle, FileVideo, FolderPlus, Layers, Loader2,
+  ExternalLink
 } from 'lucide-react';
 import { driveService } from '../api/api';
 import { useNavigate } from 'react-router-dom';
 
-export default function DriveCourseExplorer() {
+export default function DriveCourseExplorer({ initialCourse = null }) {
   const [courses, setCourses] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedCourse, setSelectedCourse] = useState(null);
+  const [loading, setLoading] = useState(!initialCourse);
+  const [selectedCourse, setSelectedCourse] = useState(initialCourse);
   const [videos, setVideos] = useState([]);
   const [loadingVideos, setLoadingVideos] = useState(false);
   const [search, setSearch] = useState('');
@@ -19,8 +20,11 @@ export default function DriveCourseExplorer() {
   const [expandedFolders, setExpandedFolders] = useState(new Set());
 
   useEffect(() => {
+    if (initialCourse) {
+      handleSelectCourse(initialCourse);
+    }
     fetchCourses();
-  }, []);
+  }, [initialCourse]);
 
   const fetchCourses = async () => {
     try {
@@ -105,39 +109,56 @@ export default function DriveCourseExplorer() {
           );
         })}
 
-        {/* Render Videos */}
-        {sortedVideos.map(v => (
-          <div 
-            key={v.fileId} 
-            onClick={() => window.location.href = `/drive/video/${v.fileId}` }
-            className="flex items-center gap-3 p-2.5 ml-6 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-xl cursor-pointer group transition border border-transparent hover:border-slate-100 dark:hover:border-slate-700"
-          >
-            <div className="relative">
-              {v.thumbnail ? (
-                <img src={v.thumbnail} className="w-12 h-8 object-cover rounded shadow-sm" alt="" />
-              ) : (
-                <div className="w-12 h-8 bg-slate-100 dark:bg-slate-700 rounded flex items-center justify-center">
-                  <FileVideo size={14} className="text-slate-400" />
-                </div>
-              )}
-              {v.progress?.completed && (
-                <div className="absolute -top-1.5 -right-1.5 bg-green-500 text-white rounded-full p-0.5">
-                  <CheckCircle2 size={10} />
-                </div>
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-bold dark:text-slate-200 truncate group-hover:text-blue-500 transition">{v.title}</p>
-              <div className="flex items-center gap-2 text-[10px] text-slate-400">
-                <span className="flex items-center gap-0.5"><Clock size={10} /> {v.duration ? `${Math.floor(v.duration / 60)}m` : '--:--'}</span>
-                {v.progress?.watchPosition > 0 && !v.progress.completed && (
-                  <span className="text-blue-500 font-bold">Resuming at {Math.floor(v.progress.watchPosition / 60)}m</span>
+        {/* Render Videos & Images */}
+        {sortedVideos.map(v => {
+          const isImage = v.mimeType.startsWith('image/');
+          return (
+            <div 
+              key={v.fileId} 
+              onClick={() => {
+                if (isImage) {
+                  // Show image in new tab or modal
+                  window.open(`${import.meta.env.VITE_API_URL || ''}/api/drive/stream/${v.fileId}`, '_blank');
+                } else {
+                  navigate(`/drive/video/${v.fileId}`);
+                }
+              }}
+              className="flex items-center gap-3 p-2.5 ml-6 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-xl cursor-pointer group transition border border-transparent hover:border-slate-100 dark:hover:border-slate-700"
+            >
+              <div className="relative">
+                {v.thumbnail ? (
+                  <img src={v.thumbnail} className="w-14 h-9 object-cover rounded-lg shadow-sm group-hover:scale-105 transition" alt="" />
+                ) : (
+                  <div className={`w-14 h-9 rounded-lg flex items-center justify-center ${isImage ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-500' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-500'}`}>
+                    {isImage ? <Layers size={14} /> : <FileVideo size={14} />}
+                  </div>
+                )}
+                {v.progress?.completed && (
+                  <div className="absolute -top-1.5 -right-1.5 bg-green-500 text-white rounded-full p-0.5 shadow-sm">
+                    <CheckCircle2 size={10} />
+                  </div>
                 )}
               </div>
+              <div className="flex-1 min-w-0">
+                <p className={`text-xs font-bold dark:text-slate-200 truncate group-hover:text-blue-500 transition ${isImage ? 'italic' : ''}`}>{v.title}</p>
+                <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                  {!isImage && (
+                    <span className="flex items-center gap-0.5"><Clock size={10} /> {v.duration ? `${Math.floor(v.duration / 60)}m` : '--:--'}</span>
+                  )}
+                  {isImage && <span className="uppercase font-black text-[8px] text-purple-400 tracking-widest">Image Asset</span>}
+                  {v.progress?.watchPosition > 0 && !v.progress.completed && (
+                    <span className="text-blue-500 font-bold">Resuming at {Math.floor(v.progress.watchPosition / 60)}m</span>
+                  )}
+                </div>
+              </div>
+              {isImage ? (
+                <ExternalLink size={16} className="text-slate-300 group-hover:text-purple-500 transition" />
+              ) : (
+                <PlayCircle size={18} className="text-slate-300 group-hover:text-blue-500 group-hover:scale-110 transition" />
+              )}
             </div>
-            <PlayCircle size={18} className="text-slate-300 group-hover:text-blue-500 group-hover:scale-110 transition" />
-          </div>
-        ))}
+          );
+        })}
       </div>
     );
   };
@@ -146,45 +167,47 @@ export default function DriveCourseExplorer() {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-      {/* Sidebar: Course List */}
-      <div className="lg:col-span-1 border-r border-slate-200 dark:border-slate-800 pr-4">
-        <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2 px-2">
-          <HardDrive size={14} /> Drive Courses
-        </h3>
-        <div className="space-y-1">
-          {courses.map(c => (
-            <button
-              key={c.folderId}
-              onClick={() => handleSelectCourse(c)}
-              className={`w-full flex items-center gap-3 p-3 rounded-2xl transition text-left group ${
-                selectedCourse?.folderId === c.folderId 
-                  ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/20' 
-                  : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'
-              }`}
-            >
-              <div className={`p-2 rounded-xl flex-shrink-0 ${
-                selectedCourse?.folderId === c.folderId ? 'bg-white/20' : 'bg-slate-100 dark:bg-slate-700'
-              }`}>
-                <FolderPlus size={18} />
-              </div>
-              <div className="min-w-0">
-                <p className="font-bold text-sm truncate">{c.folderName}</p>
-                <p className={`text-[10px] uppercase font-bold opacity-70 ${selectedCourse?.folderId === c.folderId ? 'text-blue-100' : 'text-slate-400'}`}>
-                  {c.totalVideos} Videos
-                </p>
-              </div>
-            </button>
-          ))}
-          {courses.length === 0 && (
-             <div className="p-8 text-center bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-dashed border-slate-200 dark:border-slate-700">
-               <p className="text-xs text-slate-400 italic">No Drive courses available yet.</p>
-             </div>
-          )}
+      {/* Sidebar: Course List (Hide if initialCourse provided) */}
+      {!initialCourse && (
+        <div className="lg:col-span-1 border-r border-slate-200 dark:border-slate-800 pr-4">
+          <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2 px-2">
+            <HardDrive size={14} /> Drive Courses
+          </h3>
+          <div className="space-y-1">
+            {courses.map(c => (
+              <button
+                key={c.folderId}
+                onClick={() => handleSelectCourse(c)}
+                className={`w-full flex items-center gap-3 p-3 rounded-2xl transition text-left group ${
+                  selectedCourse?.folderId === c.folderId 
+                    ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/20' 
+                    : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'
+                }`}
+              >
+                <div className={`p-2 rounded-xl flex-shrink-0 ${
+                  selectedCourse?.folderId === c.folderId ? 'bg-white/20' : 'bg-slate-100 dark:bg-slate-700'
+                }`}>
+                  <FolderPlus size={18} />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-bold text-sm truncate">{c.folderName}</p>
+                  <p className={`text-[10px] uppercase font-bold opacity-70 ${selectedCourse?.folderId === c.folderId ? 'text-blue-100' : 'text-slate-400'}`}>
+                    {c.totalVideos} Videos
+                  </p>
+                </div>
+              </button>
+            ))}
+            {courses.length === 0 && (
+               <div className="p-8 text-center bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-dashed border-slate-200 dark:border-slate-700">
+                 <p className="text-xs text-slate-400 italic">No Drive courses available yet.</p>
+               </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Main: Content Explorer */}
-      <div className="lg:col-span-3 min-h-[500px]">
+      <div className={initialCourse ? 'lg:col-span-4' : 'lg:col-span-3'}>
         {!selectedCourse ? (
           <div className="flex flex-col items-center justify-center h-full text-center p-12">
             <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-3xl flex items-center justify-center mb-6 text-slate-400">

@@ -14,16 +14,29 @@
   </head>
   <body>
     <!-- Splash Screen -->
-    <div id="splash-screen" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background-color:#0f172a;display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:9999;transition:opacity 0.5s ease;">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="100" height="100" style="margin-bottom:20px; animation: pulse 2s infinite;">
-        <rect width="192" height="192" rx="40" fill="#f97316"/>
-        <path d="M96 48l36 60H60z" fill="#ffffff"/>
-        <path d="M60 120h72v24H60z" fill="#ffffff" opacity="0.8"/>
-      </svg>
-      <h1 style="color:white;font-family:'Outfit', sans-serif;margin:0;font-size:24px;letter-spacing:1px;">StudyMate</h1>
-      <p style="color:#e2e8f0;font-family:'Inter', sans-serif;font-size:14px;opacity:0.7;margin-top:8px;">Loading resources...</p>
+    <div id="splash-screen" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background-color:#0f172a;display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:9999;transition:opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1);">
+      <div style="position:relative; width:120px; height:120px; margin-bottom:30px;">
+        <!-- Spinning Ring -->
+        <div style="position:absolute; inset:0; border:4px solid rgba(249,115,22,0.1); border-top-color:#f97316; border-radius:50%; animation: spin 1.2s linear infinite;"></div>
+        <!-- Robot Icon Container -->
+        <div style="position:absolute; inset:15px; background:linear-gradient(135deg, #f97316, #f59e0b); border-radius:24px; display:flex; align-items:center; justify-content:center; box-shadow:0 10px 25px rgba(249,115,22,0.3); animation: breath 3s ease-in-out infinite;">
+          <svg viewBox="0 0 100 100" width="60" height="60">
+             <circle cx="40" cy="47" r="4" fill="white" />
+             <circle cx="60" cy="47" r="4" fill="white" />
+             <path d="M42 58c3 2 13 2 16 0" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" />
+             <path d="M50 15 L80 27 L50 39 L20 27 Z" fill="white" />
+             <path d="M80 27 L80 40" fill="none" stroke="white" stroke-width="2" />
+             <circle cx="80" cy="40" r="2" fill="white" />
+          </svg>
+        </div>
+      </div>
+      <h1 style="color:white;font-family:'Outfit', sans-serif;margin:0;font-size:28px;font-weight:900;letter-spacing:-0.02em;">Study<span style="color:#f97316">Mate</span></h1>
+      <p style="color:#94a3b8;font-family:'Inter', sans-serif;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.2em;margin-top:12px;">Igniting Consistency</p>
     </div>
-    <style>@keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }</style>
+    <style>
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes breath { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+    </style>
 
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>

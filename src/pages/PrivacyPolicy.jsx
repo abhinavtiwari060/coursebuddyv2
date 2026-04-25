@@ -1,118 +1,86 @@
-import { Link } from 'react-router-dom';
-import { ArrowLeft, Shield, Lock, Eye, FileText, Mail, Info, User } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import { ShieldCheck, Lock, Eye, FileText, Globe, Mail } from 'lucide-react';
 
 export default function PrivacyPolicy() {
-  const lastUpdated = "April 25, 2026";
-  const developerName = "Abhinav Tiwari"; // User's name from context or placeholder
-  const developerEmail = "support@studymate.ai"; // Placeholder
-  const companyName = "StudyMate";
-
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col">
       <Navbar />
-      
-      <main className="max-w-4xl mx-auto px-6 py-12">
-        <Link to="/dashboard" className="inline-flex items-center gap-2 text-slate-500 hover:text-orange-500 font-bold transition mb-8 text-sm">
-          <ArrowLeft size={16} /> Back to Dashboard
-        </Link>
-
-        <div className="glass-card p-8 md:p-12 rounded-[2.5rem] relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/10 dark:bg-orange-500/5 rounded-bl-full pointer-events-none" />
+      <main className="flex-1 max-w-4xl mx-auto px-6 py-16 w-full">
+        <div className="glass-card p-8 md:p-12 rounded-[2.5rem] border border-orange-200 dark:border-slate-800 shadow-2xl shadow-orange-500/5 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/5 blur-3xl rounded-full" />
           
-          <div className="relative z-10">
-            <div className="w-16 h-16 bg-orange-100 dark:bg-orange-900/30 rounded-2xl flex items-center justify-center mb-6">
-              <Shield size={32} className="text-orange-500" />
+          <div className="relative">
+            <div className="w-16 h-16 bg-orange-100 dark:bg-orange-900/30 text-orange-600 rounded-2xl flex items-center justify-center mb-8">
+              <ShieldCheck size={32} />
             </div>
             
-            <h1 className="text-4xl font-black text-slate-800 dark:text-white mb-2">Privacy Policy</h1>
-            <p className="text-slate-500 dark:text-slate-400 font-medium mb-8">
-              Last Updated: {lastUpdated}
-            </p>
+            <h1 className="text-4xl font-black dark:text-white mb-2">Privacy Policy</h1>
+            <p className="text-slate-500 font-bold mb-12 uppercase tracking-widest text-sm">Last Updated: October 2023</p>
 
-            <div className="prose prose-slate dark:prose-invert max-w-none space-y-8">
+            <div className="space-y-10 prose dark:prose-invert max-w-none">
               <section>
-                <p className="text-lg text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
-                  Welcome to <strong>{companyName}</strong>. Your privacy is critical to us. This policy explains how we collect, use, and protect your information when you use our web application. By using {companyName}, you agree to these practices.
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-lg"><Globe size={18} /></div>
+                  <h2 className="text-xl font-bold m-0">1. Introduction</h2>
+                </div>
+                <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+                  Welcome to StudyMate ("we," "our," or "us"). Your privacy is important to us. This Privacy Policy explains how we collect, use, store, and protect your information when you use our web application. By using StudyMate, you agree to the practices described in this Privacy Policy.
                 </p>
               </section>
 
-              <section className="space-y-4">
-                <h2 className="text-2xl font-black text-slate-800 dark:text-white flex items-center gap-3">
-                  <User size={24} className="text-orange-500" /> 1. Information We Collect
-                </h2>
-                <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-                  We may collect personal information such as your <strong>Full Name, Email Address, Username, and Profile Picture</strong> during account creation or Google Login.
-                </p>
-                <div className="bg-slate-50 dark:bg-slate-900/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-800">
-                   <h4 className="font-bold text-slate-800 dark:text-white mb-2 underline decoration-orange-500 decoration-2 underline-offset-4">Activity Data</h4>
-                   <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-                     We track your learning progress, including courses enrolled, quiz scores, video completion status, and study streaks to provide a personalized experience.
-                   </p>
+              <section>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-lg"><Eye size={18} /></div>
+                  <h2 className="text-xl font-bold m-0">2. Information We Collect</h2>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+                  <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
+                    <h3 className="font-bold mb-2">Personal Information</h3>
+                    <p className="text-sm text-slate-500">Full name, email address, username, profile picture, and login credentials collected during account creation.</p>
+                  </div>
+                  <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
+                    <h3 className="font-bold mb-2">Learning Activity</h3>
+                    <p className="text-sm text-slate-500">Courses enrolled, quiz performance, video progress, study tracker data, and overall learning patterns.</p>
+                  </div>
                 </div>
               </section>
 
-              <section className="space-y-4">
-                <h2 className="text-2xl font-black text-slate-800 dark:text-white flex items-center gap-3">
-                  <Info size={24} className="text-blue-500" /> 2. How We Use Your Information
-                </h2>
-                <ul className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-slate-600 dark:text-slate-400 list-none p-0">
-                  {[
-                    "Provide and improve our core services",
-                    "Personalize your learning experience",
-                    "Track study progress and performance",
-                    "Maintain account security and safety",
-                    "Send important updates and alerts",
-                    "Optimize app performance and speed"
-                  ].map((item, i) => (
-                    <li key={i} className="flex items-center gap-2 bg-white/50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700">
-                      <div className="w-2 h-2 rounded-full bg-orange-500" /> {item}
-                    </li>
-                  ))}
+              <section>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-purple-100 dark:bg-purple-900/30 text-purple-600 rounded-lg"><Lock size={18} /></div>
+                  <h2 className="text-xl font-bold m-0">3. How We Use Information</h2>
+                </div>
+                <ul className="list-none space-y-3 pl-0 text-slate-600 dark:text-slate-400">
+                  <li className="flex gap-3"><CheckCircle2 className="text-green-500 flex-shrink-0" size={18} /> To provide and maintain our platform services</li>
+                  <li className="flex gap-3"><CheckCircle2 className="text-green-500 flex-shrink-0" size={18} /> To track your learning progress and generate analytics</li>
+                  <li className="flex gap-3"><CheckCircle2 className="text-green-500 flex-shrink-0" size={18} /> To provide personalized course recommendations</li>
+                  <li className="flex gap-3"><CheckCircle2 className="text-green-500 flex-shrink-0" size={18} /> To communicate important updates or notifications</li>
                 </ul>
               </section>
 
-              <section className="space-y-4">
-                <h2 className="text-2xl font-black text-slate-800 dark:text-white flex items-center gap-3">
-                  <Lock size={24} className="text-green-500" /> 3. Data Security & Retention
-                </h2>
+              <section>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-orange-100 dark:bg-orange-900/30 text-orange-600 rounded-lg"><FileText size={18} /></div>
+                  <h2 className="text-xl font-bold m-0">4. Data Protection</h2>
+                </div>
                 <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-                  We use industry-standard encryption and security measures to protect your data. We retain your information only as long as necessary to provide services. You may request account deletion at any time through your profile settings.
+                  We implement a variety of security measures to maintain the safety of your personal information. Your data is stored on secure servers and access is limited to authorized personnel only. However, no method of transmission over the internet is 100% secure.
                 </p>
               </section>
 
-              <section className="space-y-4">
-                <h2 className="text-2xl font-black text-slate-800 dark:text-white flex items-center gap-3">
-                  <Eye size={24} className="text-indigo-500" /> 4. Third-Party Services
-                </h2>
-                <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-                  We integrate with services like <strong>Firebase (Google Auth), YouTube (Content), and Google Drive</strong>. We do not sell your personal data to advertisers.
-                </p>
-              </section>
-
-              <section className="space-y-4">
-                <h2 className="text-2xl font-black text-slate-800 dark:text-white flex items-center gap-3">
-                  <FileText size={24} className="text-orange-500" /> 5. Developer Vision
-                </h2>
-                <div className="bg-orange-500/5 dark:bg-orange-500/5 border border-orange-500/20 p-8 rounded-[2rem]">
-                  <p className="italic text-slate-700 dark:text-slate-200 leading-relaxed">
-                    "{companyName} was born from a vision to make structured learning accessible and trackable for everyone. We believe that consistency is the key to mastering any skill, and our platform is built to foster that consistency through smart tracking and rewarding milestones."
-                  </p>
-                  <p className="mt-4 font-black grad-text text-lg">— {developerName}</p>
+              <div className="p-8 rounded-[2.5rem] bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-xl shadow-orange-500/20">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-md">
+                    <Mail size={24} />
+                  </div>
+                  <h2 className="text-2xl font-black">Contact Us</h2>
                 </div>
-              </section>
-
-              <section className="pt-8 border-t border-slate-100 dark:border-slate-800">
-                <h2 className="text-2xl font-black text-slate-800 dark:text-white mb-4 flex items-center gap-3">
-                  <Mail size={24} className="text-pink-500" /> Contact Us
-                </h2>
-                <div className="text-slate-600 dark:text-slate-400 space-y-2">
-                  <p><strong>Email:</strong> {developerEmail}</p>
-                  <p><strong>Developer:</strong> {developerName}</p>
-                  <p><strong>Location:</strong> Lucknow, India</p>
+                <p className="font-medium opacity-90 mb-6">If you have any questions about this Privacy Policy, please contact our support team at:</p>
+                <div className="bg-white/10 p-4 rounded-2xl flex items-center gap-3 font-bold border border-white/20">
+                   support@studymate.app
                 </div>
-              </section>
+              </div>
             </div>
           </div>
         </div>

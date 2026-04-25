@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Youtube, Send, CheckCircle2, Clock, Check, FileText, Trash2, Hash, BookOpen } from 'lucide-react';
 import { formatDuration } from '../utils/helpers';
 
 export default function VideoCard({ video, onToggleComplete, onUpdateNotes, onDelete, sequenceNumber }) {
+  const navigate = useNavigate();
   const isYouTube = video.platform === 'YouTube';
   const [showNotes, setShowNotes] = useState(false);
   const [notes, setNotes] = useState(video.notes || '');
@@ -46,23 +48,26 @@ export default function VideoCard({ video, onToggleComplete, onUpdateNotes, onDe
       {/* Video Thumbnail / Header */}
       <div className="flex gap-4">
         {video.thumbnail && (
-          <a href={video.link} target="_blank" rel="noreferrer" className="flex-shrink-0 group relative rounded-xl overflow-hidden block w-24 h-16 bg-slate-200 dark:bg-slate-700">
+          <div 
+            onClick={() => navigate(`/course/${video.courseId || video.course}/video/${videoId}`)} 
+            className="flex-shrink-0 group relative rounded-xl overflow-hidden block w-24 h-16 bg-slate-200 dark:bg-slate-700 cursor-pointer"
+          >
             <img src={video.thumbnail} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
             <div className="absolute inset-0 bg-black/20 group-hover:bg-black/0 transition-colors" />
             <div className="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
               {formatDuration(video.duration) || '🔗'}
             </div>
-          </a>
+          </div>
         )}
         
         <div className={`flex-1 min-w-0 flex justify-between items-start gap-4 ${sequenceNumber !== undefined ? 'pl-5' : ''}`}>
-          <h3 className={`font-semibold text-base leading-tight line-clamp-2 flex-1 mt-1 ${video.completed ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-900 dark:text-white'}`}>
-            <a href={video.link} target="_blank" rel="noreferrer" className="hover:text-orange-500 dark:hover:text-orange-400 transition-colors">
-              {video.title}
-            </a>
+          <h3 className={`font-semibold text-base leading-tight line-clamp-2 flex-1 mt-1 cursor-pointer hover:text-orange-500 transition-colors ${video.completed ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-900 dark:text-white'}`}
+            onClick={() => navigate(`/course/${video.courseId || video.course}/video/${videoId}`)}
+          >
+            {video.title}
           </h3>
           <div className="flex-shrink-0 mt-1">
-            <a href={video.link} target="_blank" rel="noreferrer" className="p-2 rounded-xl bg-slate-100 dark:bg-slate-700/50 hover:bg-orange-100 dark:hover:bg-slate-600 transition-colors inline-block group">
+            <div className="p-2 rounded-xl bg-slate-100 dark:bg-slate-700/50 hover:bg-orange-100 dark:hover:bg-slate-600 transition-colors inline-block group">
               {isYouTube ? (
                 <Youtube className="text-red-500 group-hover:scale-110 transition-transform" size={20} />
               ) : video.platform === 'Telegram' ? (
@@ -70,7 +75,7 @@ export default function VideoCard({ video, onToggleComplete, onUpdateNotes, onDe
               ) : (
                 <div className="w-5 h-5 rounded-full bg-orange-200 dark:bg-slate-600 group-hover:scale-110 transition-transform" />
               )}
-            </a>
+            </div>
           </div>
         </div>
       </div>
