@@ -17,6 +17,8 @@ import QuizPage from './pages/QuizPage';
 import QuizResults from './pages/QuizResults';
 import QuizLeaderboard from './pages/QuizLeaderboard';
 import DrivePlayer from './pages/DrivePlayer';
+import ErrorBoundary from './components/ErrorBoundary';
+
 
 
 // Protected Route Wrapper
@@ -113,94 +115,97 @@ export default function App() {
       )}
       <Router>
       <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
-          <Route 
-            path="/admin" 
-            element={
-              <ProtectedRoute>
-                <AdminDashboard />
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/dashboard" 
-            element={
-              <ProtectedRoute>
-                <Home />
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/profile" 
-            element={
-              <ProtectedRoute>
-                <Profile />
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/leaderboard" 
-            element={
-              <FeatureGate feature="canUseLeaderboard">
-                <Leaderboard />
-              </FeatureGate>
-            } 
-          />
-          <Route 
-            path="/thoughts" 
-            element={
-              <FeatureGate feature="canUseCommunity">
-                <Thoughts />
-              </FeatureGate>
-            } 
-          />
-          <Route 
-            path="/course/:courseId/video/:videoId" 
-            element={
-              <ProtectedRoute>
-                <VideoPlayer />
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/drive/video/:fileId" 
-            element={
-              <ProtectedRoute>
-                <DrivePlayer />
-              </ProtectedRoute>
-            } 
-          />
+        <ErrorBoundary>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
+            <Route 
+              path="/admin" 
+              element={
+                <ProtectedRoute>
+                  <AdminDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/dashboard" 
+              element={
+                <ProtectedRoute>
+                  <Home />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/profile" 
+              element={
+                <ProtectedRoute>
+                  <Profile />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/leaderboard" 
+              element={
+                <FeatureGate feature="canUseLeaderboard">
+                  <Leaderboard />
+                </FeatureGate>
+              } 
+            />
+            <Route 
+              path="/thoughts" 
+              element={
+                <FeatureGate feature="canUseCommunity">
+                  <Thoughts />
+                </FeatureGate>
+              } 
+            />
+            <Route 
+              path="/course/:courseId/video/:videoId" 
+              element={
+                <ProtectedRoute>
+                  <VideoPlayer />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/drive/video/:fileId" 
+              element={
+                <ProtectedRoute>
+                  <DrivePlayer />
+                </ProtectedRoute>
+              } 
+            />
 
-          <Route 
-            path="/quiz/:id" 
-            element={
-              <ProtectedRoute>
-                <QuizPage />
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/quiz/:id/results" 
-            element={
-              <ProtectedRoute>
-                <QuizResults />
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/quiz/:id/leaderboard" 
-            element={
-              <ProtectedRoute>
-                <QuizLeaderboard />
-              </ProtectedRoute>
-            } 
-          />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
+            <Route 
+              path="/quiz/:id" 
+              element={
+                <ProtectedRoute>
+                  <QuizPage />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/quiz/:id/results" 
+              element={
+                <ProtectedRoute>
+                  <QuizResults />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/quiz/:id/leaderboard" 
+              element={
+                <ProtectedRoute>
+                  <QuizLeaderboard />
+                </ProtectedRoute>
+              } 
+            />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </ErrorBoundary>
       </AuthProvider>
     </Router>
+
     </>
   );
 }
