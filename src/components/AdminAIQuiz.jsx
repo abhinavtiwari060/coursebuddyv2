@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import {
-  Sparkles, Loader2, Plus, Trash2, CheckCircle2,
+  Sparkles, Loader2, Trash2, CheckCircle2,
   Copy, Download, RefreshCw, ChevronDown, ChevronUp,
-  Zap, BookOpen, Target, AlertTriangle, Send
+  Zap, BookOpen, Target, AlertTriangle, Send, Cpu
 } from 'lucide-react';
 import api from '../api/api';
 
@@ -18,6 +18,8 @@ export default function AdminAIQuiz() {
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
+  const [errorHint, setErrorHint] = useState('');
+  const [usedModel, setUsedModel] = useState('');
   const [expandedIdx, setExpandedIdx] = useState(null);
 
   // For pushing to quiz manager
@@ -29,15 +31,19 @@ export default function AdminAIQuiz() {
   const handleGenerate = async () => {
     if (!topic.trim()) return setError('Please enter a topic.');
     setError('');
+    setErrorHint('');
     setQuestions([]);
     setPushDone(false);
     setLoading(true);
     try {
       const res = await api.post('/api/admin/ai-quiz/generate', { topic: topic.trim(), count });
       setQuestions(res.data.questions || []);
+      setUsedModel(res.data.model || '');
       setQuizTitle(`${topic} Quiz`);
     } catch (err) {
-      setError(err.response?.data?.error || 'Generation failed. Check your Gemini API key in backend .env.');
+      const data = err.response?.data || {};
+      setError(data.error || 'Generation failed. Check your Gemini API key in backend .env.');
+      setErrorHint(data.hint || '');
     } finally {
       setLoading(false);
     }
@@ -150,8 +156,13 @@ export default function AdminAIQuiz() {
         </div>
 
         {error && (
-          <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-sm font-bold">
-            <AlertTriangle size={16} /> {error}
+          <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
+            <div className="flex items-center gap-2 text-red-600 dark:text-red-400 text-sm font-bold">
+              <AlertTriangle size={16} /> {error}
+            </div>
+            {errorHint && (
+              <p className="mt-1 text-xs text-red-500 dark:text-red-400 pl-6">{errorHint}</p>
+            )}
           </div>
         )}
 
@@ -173,11 +184,16 @@ export default function AdminAIQuiz() {
 
           {/* Stats + Actions bar */}
           <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="font-black dark:text-white">{questions.length} Questions Generated</span>
               <span className={`badge text-[10px] font-black ${DIFFICULTY_COLORS.easy}`}>{easyCount} Easy</span>
               <span className={`badge text-[10px] font-black ${DIFFICULTY_COLORS.medium}`}>{mediumCount} Medium</span>
               <span className={`badge text-[10px] font-black ${DIFFICULTY_COLORS.hard}`}>{hardCount} Hard</span>
+              {usedModel && (
+                <span className="flex items-center gap-1 badge bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 text-[10px] font-black">
+                  <Cpu size={10} /> {usedModel}
+                </span>
+              )}
             </div>
             <div className="flex gap-2">
               <button onClick={handleCopy} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-xs font-bold transition">

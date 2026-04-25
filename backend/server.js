@@ -1820,58 +1820,146 @@ app.post('/api/drive/progress', authMiddleware, async (req, res) => {
 });
 
 // ── AI Quiz Generation (Google Gemini) ───────────────────
+// Model preference order — tries each until one succeeds
+const GEMINI_MODELS = [
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-1.5-pro',
+];
+
+async function callGemini(apiKey, prompt) {
+  let lastError = null;
+  for (const model of GEMINI_MODELS) {
+    const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
+    console.log(`[AI QUIZ] Trying model: ${model}`);
+    try {
+      const res = await axios.post(
+        url,
+        {
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 8192,
+            // responseMimeType: 'application/json' is omitted here because it can cause 400 errors 
+            // if not supported by the specific model version or endpoint. 
+            // We handle JSON parsing manually from the response text.
+          }
+        },
+        { headers: { 'Content-Type': 'application/json' }, timeout: 60000 }
+      );
+      
+      const text = res.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      if (!text) {
+        console.warn(`[AI QUIZ] ⚠️ Model ${model} returned empty content. Trying next...`);
+        continue;
+      }
+      
+      console.log(`[AI QUIZ] ✅ Model ${model} responded. Raw length: ${text.length} chars`);
+      return { text, model };
+    } catch (err) {
+      const status = err.response?.status;
+      const msg = err.response?.data?.error?.message || err.message;
+      console.warn(`[AI QUIZ] ❌ Model ${model} failed (HTTP ${status}): ${msg}`);
+      lastError = err;
+
+      // If it's a quota (429) or auth (401/403) error, don't bother trying other models
+      if (status === 429 || status === 401 || status === 403) {
+        throw err;
+      }
+      // For 404, 400, or 500, try the next model in the list
+      continue;
+    }
+  }
+  
+  const finalMsg = lastError?.response?.data?.error?.message || lastError?.message || 'Unknown error';
+  throw new Error(`All Gemini models failed. Last error: ${finalMsg}`);
+}
+
+// Bulk create quiz with questions (used by AI Quiz Generator)
+app.post('/api/quiz', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { title, description, questions, duration, isRetryAllowed, status } = req.body;
+    
+    console.log(`[QUIZ BULK] Creating quiz: "${title}" with ${questions?.length || 0} questions`);
+
+    const quiz = await Quiz.create({
+      title,
+      description,
+      duration: duration || 30,
+      isRetryAllowed: isRetryAllowed || false,
+      status: status || 'draft',
+      createdBy: req.user.id,
+    });
+
+    if (questions && Array.isArray(questions)) {
+      const questionDocs = questions.map((q, idx) => ({
+        quizId: quiz._id,
+        questionText: q.question || q.questionText,
+        option1: q.options ? q.options[0] : q.option1,
+        option2: q.options ? q.options[1] : q.option2,
+        option3: q.options ? q.options[2] : q.option3,
+        option4: q.options ? q.options[3] : q.option4,
+        correctAnswer: q.correctAnswer,
+        order: idx + 1
+      }));
+      await Question.insertMany(questionDocs);
+    }
+
+    res.status(201).json(quiz);
+  } catch (err) {
+    console.error('[QUIZ BULK] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/admin/ai-quiz/generate', authMiddleware, adminMiddleware, async (req, res) => {
+  const startTime = Date.now();
   try {
     const { topic, count = 10 } = req.body;
-    if (!topic) return res.status(400).json({ error: 'Topic is required.' });
+    if (!topic || !topic.trim()) {
+      return res.status(400).json({ error: 'Topic is required.' });
+    }
 
     const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: 'GEMINI_API_KEY is not set in backend .env' });
+    if (!apiKey || apiKey === 'YOUR_GOOGLE_GEMINI_API_KEY_HERE' || !apiKey.trim()) {
+      console.error('[AI QUIZ] GEMINI_API_KEY not configured in backend .env');
+      return res.status(500).json({
+        error: 'Gemini API key not configured. Add GEMINI_API_KEY to backend/.env',
+        hint: 'Get your key from https://aistudio.google.com/app/apikey'
+      });
+    }
+
+    console.log(`[AI QUIZ] Generating ${count} questions on topic: "${topic}"`);
 
     const prompt = `Generate ${count} MCQ questions on ${topic}.
 
-Return ONLY pure JSON array.
+Return ONLY a pure JSON array. No markdown. No explanation. No extra text. Output must start with [ and end with ].
 
-Format:
-[
-  {
-    "question": "Question here",
-    "options": [
-      "Option 1",
-      "Option 2",
-      "Option 3",
-      "Option 4"
-    ],
-    "correctAnswer": "Correct option",
-    "difficulty": "easy/medium/hard"
-  }
-]
+Required format for each object:
+{
+  "question": "Question text here",
+  "options": ["Option A", "Option B", "Option C", "Option D"],
+  "correctAnswer": "The exact text of the correct option",
+  "difficulty": "easy"
+}
 
 Rules:
-- Questions must be unique
-- 4 options only
-- Correct answer must exist inside options
-- No explanations
-- No markdown
-- No extra text
-- Make questions educational
-- Difficulty should vary`;
+- Exactly 4 options per question
+- correctAnswer MUST be an exact copy of one of the 4 options
+- difficulty must be one of: easy, medium, hard
+- Vary difficulty across questions
+- Questions must be unique and educational
+- Return exactly ${count} questions`;
 
-    const geminiRes = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-      {
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 8192,
-        }
-      },
-      { headers: { 'Content-Type': 'application/json' }, timeout: 60000 }
-    );
+    console.log(`[AI QUIZ] Prompting Gemini...`);
+    console.log(`[AI QUIZ] PROMPT:\n${prompt}`);
 
-    const raw = geminiRes.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const { text: raw, model: usedModel } = await callGemini(apiKey, prompt);
 
-    // Strip markdown code fences if present
+    console.log(`[AI QUIZ] Used model: ${usedModel}`);
+    console.log(`[AI QUIZ] RAW RESPONSE:\n${raw}`);
+
+    // Strip markdown code fences if Gemini adds them despite instructions
     const cleaned = raw
       .replace(/^```(?:json)?\s*/i, '')
       .replace(/\s*```\s*$/, '')
@@ -1880,31 +1968,90 @@ Rules:
     let questions;
     try {
       questions = JSON.parse(cleaned);
-    } catch {
-      // Try to extract JSON array from the text
+      console.log(`[AI QUIZ] JSON parsed successfully. Item count: ${questions.length}`);
+    } catch (parseErr) {
+      console.warn(`[AI QUIZ] Direct JSON.parse failed: ${parseErr.message}. Trying regex extraction...`);
+      // Try to extract a JSON array anywhere in the response
       const match = cleaned.match(/\[[\s\S]*\]/);
-      if (match) questions = JSON.parse(match[0]);
-      else return res.status(500).json({ error: 'Gemini returned invalid JSON. Try again.', raw });
+      if (match) {
+        try {
+          questions = JSON.parse(match[0]);
+          console.log(`[AI QUIZ] Regex extraction succeeded. Item count: ${questions.length}`);
+        } catch (e2) {
+          console.error('[AI QUIZ] Regex extraction also failed:', e2.message);
+          return res.status(500).json({
+            error: 'Gemini returned malformed JSON. Please try again.',
+            hint: 'If this keeps happening, try a more specific topic.',
+          });
+        }
+      } else {
+        console.error('[AI QUIZ] No JSON array found in response. Raw:', raw.slice(0, 300));
+        return res.status(500).json({
+          error: 'Gemini did not return a JSON array. Please try again.',
+          hint: 'Try rephrasing your topic or reducing question count.',
+        });
+      }
     }
 
     if (!Array.isArray(questions)) {
-      return res.status(500).json({ error: 'Expected a JSON array from Gemini.', raw });
+      return res.status(500).json({ error: 'Gemini response is not an array. Try again.' });
     }
 
-    // Validate & sanitize each question
-    const validated = questions
-      .filter(q => q.question && Array.isArray(q.options) && q.options.length === 4 && q.correctAnswer)
-      .map(q => ({
-        question: String(q.question).trim(),
-        options: q.options.map(o => String(o).trim()),
-        correctAnswer: String(q.correctAnswer).trim(),
-        difficulty: ['easy', 'medium', 'hard'].includes(q.difficulty) ? q.difficulty : 'medium',
-      }));
+    // Validate & sanitize
+    const validated = [];
+    for (const q of questions) {
+      if (!q.question || !Array.isArray(q.options) || q.options.length !== 4 || !q.correctAnswer) {
+        console.warn('[AI QUIZ] Skipping invalid question:', JSON.stringify(q).slice(0, 100));
+        continue;
+      }
+      // Ensure correctAnswer is actually one of the options
+      const opts = q.options.map(o => String(o).trim());
+      const correct = String(q.correctAnswer).trim();
+      const matchOpt = opts.find(o => o.toLowerCase() === correct.toLowerCase());
+      if (!matchOpt) {
+        console.warn(`[AI QUIZ] Skipping question: correctAnswer not in options — "${correct}"`);
+        continue;
+      }
+      validated.push({
+        question:      String(q.question).trim(),
+        options:       opts,
+        correctAnswer: matchOpt,
+        difficulty:    ['easy', 'medium', 'hard'].includes(q.difficulty) ? q.difficulty : 'medium',
+      });
+    }
 
-    res.json({ questions: validated, topic, count: validated.length });
+    const elapsed = Date.now() - startTime;
+    console.log(`[AI QUIZ] ✅ Done. ${validated.length}/${questions.length} valid questions in ${elapsed}ms. Model: ${usedModel}`);
+
+    if (validated.length === 0) {
+      return res.status(500).json({ error: 'Gemini generated 0 valid questions. Try a different topic.' });
+    }
+
+    res.json({ questions: validated, topic, count: validated.length, model: usedModel, elapsed });
+
   } catch (err) {
-    console.error('[AI QUIZ] Error:', err.response?.data || err.message);
-    res.status(500).json({ error: err.response?.data?.error?.message || err.message });
+    const elapsed = Date.now() - startTime;
+    const geminiMsg = err.response?.data?.error?.message;
+    const geminiStatus = err.response?.status;
+    console.error(`[AI QUIZ] ❌ Fatal error after ${elapsed}ms — HTTP ${geminiStatus}: ${geminiMsg || err.message}`);
+    if (err.response?.data) {
+      console.error('[AI QUIZ] Gemini API response body:', JSON.stringify(err.response.data).slice(0, 500));
+    }
+
+    let friendlyError = 'Quiz generation failed. Please try again.';
+    if (geminiStatus === 401 || geminiStatus === 403) {
+      friendlyError = 'Gemini API key is invalid or unauthorised. Check GEMINI_API_KEY in backend/.env';
+    } else if (geminiStatus === 429) {
+      friendlyError = 'Gemini API rate limit exceeded. Wait a moment and try again.';
+    } else if (geminiStatus === 400) {
+      friendlyError = 'Gemini rejected the request. Try a different topic or reduce question count.';
+    } else if (err.code === 'ECONNABORTED') {
+      friendlyError = 'Gemini API timed out (60s). Try fewer questions or a simpler topic.';
+    } else if (geminiMsg) {
+      friendlyError = geminiMsg;
+    }
+
+    res.status(500).json({ error: friendlyError });
   }
 });
 
