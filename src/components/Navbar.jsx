@@ -22,17 +22,27 @@ export default function Navbar() {
         {/* Logo */}
         <Link to="/dashboard" className="flex items-center gap-3">
           <div className="relative">
-            <div className="btn-primary p-2.5 rounded-xl flex items-center justify-center">
-              <BookOpen size={22} />
+            <div className="btn-primary w-11 h-11 rounded-2xl flex items-center justify-center p-0 overflow-hidden shadow-lg shadow-blue-500/20">
+               {/* Custom Robot Logo SVG */}
+               <svg viewBox="0 0 100 100" className="w-8 h-8 fill-white">
+                  <path d="M50 20c-15 0-27 12-27 27s12 27 27 27 27-12 27-27-12-27-27-27zm0 48c-11.6 0-21-9.4-21-21s9.4-21 21-21 21 9.4 21 21-9.4 21-21 21z" opacity="0.3"/>
+                  <circle cx="38" cy="45" r="5" />
+                  <circle cx="62" cy="45" r="5" />
+                  <path d="M40 60c5 3 15 3 20 0" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" />
+                  {/* Graduation Cap */}
+                  <path d="M50 5 L85 20 L50 35 L15 20 Z" fill="white" />
+                  <path d="M85 20 L85 35" fill="none" stroke="white" strokeWidth="2" />
+                  <circle cx="85" cy="35" r="2" fill="white" />
+               </svg>
             </div>
-            <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-white dark:border-slate-900 pulse-dot" />
+            <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-green-400 rounded-full border-2 border-white dark:border-slate-900 pulse-dot shadow-sm" />
           </div>
           <div>
-            <h1 className="text-xl font-black grad-text leading-none tracking-tight">
-              Course Buddy
+            <h1 className="text-2xl font-black tracking-tight text-slate-800 dark:text-white flex items-center">
+              Study<span className="text-orange-500">Mate</span>
             </h1>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium tracking-widest uppercase leading-none mt-0.5">
-              Learn · Track · Grow
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold tracking-[0.2em] uppercase leading-none mt-0.5">
+              Learn Better · Track Smarter
             </p>
           </div>
         </Link>

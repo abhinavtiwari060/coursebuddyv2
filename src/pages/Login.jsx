@@ -33,12 +33,24 @@ export default function Login() {
 
       <div className="glass-card w-full max-w-md p-8 rounded-3xl relative z-10 shadow-xl">
         <div className="flex flex-col items-center mb-8">
-          <div className="btn-primary w-14 h-14 rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-orange-500/30">
-            <BookOpen size={28} className="text-white" />
+          <div className="btn-primary w-16 h-16 rounded-2xl flex items-center justify-center mb-4 shadow-xl shadow-orange-500/20 p-0 overflow-hidden">
+             {/* Custom Robot Logo SVG */}
+             <svg viewBox="0 0 100 100" className="w-10 h-10 fill-white">
+                <path d="M50 20c-15 0-27 12-27 27s12 27 27 27 27-12 27-27-12-27-27-27zm0 48c-11.6 0-21-9.4-21-21s9.4-21 21-21 21 9.4 21 21-9.4 21-21 21z" opacity="0.3"/>
+                <circle cx="38" cy="45" r="5" />
+                <circle cx="62" cy="45" r="5" />
+                <path d="M40 60c5 3 15 3 20 0" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" />
+                {/* Graduation Cap */}
+                <path d="M50 5 L85 20 L50 35 L15 20 Z" fill="white" />
+                <path d="M85 20 L85 35" fill="none" stroke="white" strokeWidth="2" />
+                <circle cx="85" cy="35" r="2" fill="white" />
+             </svg>
           </div>
-          <h1 className="text-3xl font-black grad-text">Welcome Back</h1>
-          <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-1">
-            Login to continue studying
+          <h1 className="text-4xl font-black tracking-tight text-slate-800 dark:text-white">
+            Study<span className="text-orange-500">Mate</span>
+          </h1>
+          <p className="text-sm font-bold text-slate-500 dark:text-slate-400 mt-2 uppercase tracking-widest">
+            Learn Better · Track Smarter
           </p>
         </div>
 

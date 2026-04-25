@@ -11,8 +11,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'firebase-messaging-sw.js'],
       manifest: {
-        name: 'CourseBuddy',
-        short_name: 'CourseBuddy',
+        name: 'StudyMate',
+        short_name: 'StudyMate',
         description: 'Your smart study tracker — track courses, videos, streaks and more.',
         theme_color: '#000000',
         background_color: '#000000',

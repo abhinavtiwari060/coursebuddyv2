@@ -1,7 +1,7 @@
 {
-  "name": "studyflow-backend",
+  "name": "studymate-backend",
   "version": "1.0.0",
-  "description": "Backend for StudyFlow Application",
+  "description": "Backend for StudyMate Application",
   "main": "server.js",
   "type": "module",
   "scripts": {

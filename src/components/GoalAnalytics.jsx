@@ -12,9 +12,9 @@ export default function GoalAnalytics({ videos, streak, goalTarget, onUpdateGoal
 
   useEffect(() => {
     if (completedToday >= goalTarget && goalTarget > 0) {
-      if (localStorage.getItem('studyflow_goal_celebrated') !== todayStr) {
+      if (localStorage.getItem('studymate_goal_celebrated') !== todayStr) {
         confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
-        localStorage.setItem('studyflow_goal_celebrated', todayStr);
+        localStorage.setItem('studymate_goal_celebrated', todayStr);
       }
     }
   }, [completedToday, goalTarget, todayStr]);

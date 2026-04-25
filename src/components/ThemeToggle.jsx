@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 
 export default function ThemeToggle() {
-  const [theme, setTheme] = useLocalStorage('studyflow_theme', 'light');
+  const [theme, setTheme] = useLocalStorage('studymate_theme', 'light');
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');

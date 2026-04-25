@@ -275,7 +275,7 @@ export default function AdminDashboard() {
           </div>
           <div>
             <h1 className="text-2xl font-black">Admin Control Panel</h1>
-            <p className="text-slate-400 text-sm">Course Buddy · Total {users.length} users managed</p>
+            <p className="text-slate-400 text-sm">StudyMate · Total {users.length} users managed</p>
           </div>
         </div>
         <button

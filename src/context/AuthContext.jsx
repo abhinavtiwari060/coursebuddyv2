@@ -11,8 +11,8 @@ export const AuthProvider = ({ children }) => {
 
   // Initialize Auth
   useEffect(() => {
-    const token = localStorage.getItem('studyflow_token');
-    const userData = localStorage.getItem('studyflow_user');
+    const token = localStorage.getItem('studymate_token');
+    const userData = localStorage.getItem('studymate_user');
     
     if (token && userData) {
       setUser(JSON.parse(userData));
@@ -52,7 +52,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const data = await profileService.get();
       if (data && data.user) {
-        localStorage.setItem('studyflow_user', JSON.stringify(data.user));
+        localStorage.setItem('studymate_user', JSON.stringify(data.user));
         setUser(data.user);
         return data.user;
       }
@@ -66,8 +66,8 @@ export const AuthProvider = ({ children }) => {
     const data = await authService.login(email, password);
     const { token, user: userData } = data;
     
-    localStorage.setItem('studyflow_token', token);
-    localStorage.setItem('studyflow_user', JSON.stringify(userData));
+    localStorage.setItem('studymate_token', token);
+    localStorage.setItem('studymate_user', JSON.stringify(userData));
     setUser(userData);
     return userData;
   };
@@ -76,8 +76,8 @@ export const AuthProvider = ({ children }) => {
     const data = await authService.signup(name, email, password);
     const { token, user: userData } = data;
     
-    localStorage.setItem('studyflow_token', token);
-    localStorage.setItem('studyflow_user', JSON.stringify(userData));
+    localStorage.setItem('studymate_token', token);
+    localStorage.setItem('studymate_user', JSON.stringify(userData));
     setUser(userData);
     return userData;
   };
@@ -94,8 +94,8 @@ export const AuthProvider = ({ children }) => {
     );
     const { token, user: userData } = data;
     
-    localStorage.setItem('studyflow_token', token);
-    localStorage.setItem('studyflow_user', JSON.stringify(userData));
+    localStorage.setItem('studymate_token', token);
+    localStorage.setItem('studymate_user', JSON.stringify(userData));
     setUser(userData);
     return userData;
   };
@@ -106,8 +106,8 @@ export const AuthProvider = ({ children }) => {
     } catch (err) {
       console.log('Logout API error (non-critical)', err);
     }
-    localStorage.removeItem('studyflow_token');
-    localStorage.removeItem('studyflow_user');
+    localStorage.removeItem('studymate_token');
+    localStorage.removeItem('studymate_user');
     setUser(null);
   };
 

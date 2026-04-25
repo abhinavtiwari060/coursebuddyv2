@@ -14,7 +14,7 @@ export default function DataTools({ videos, courses, setVideos, setCourses }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `StudyCourseBuddy_Backup_${new Date().toLocaleDateString().replace(/\//g, '-')}.json`;
+    a.download = `StudyMate_Backup_${new Date().toLocaleDateString().replace(/\//g, '-')}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };

@@ -12,7 +12,7 @@ const api = axios.create({
 // Attach JWT token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("studyflow_token");
+    const token = localStorage.getItem("studymate_token");
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -26,8 +26,8 @@ api.interceptors.response.use(
   (res) => res,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem("studyflow_token");
-      localStorage.removeItem("studyflow_user");
+      localStorage.removeItem("studymate_token");
+      localStorage.removeItem("studymate_user");
       if (window.location.pathname !== "/login") {
         window.location.href = "/login";
       }

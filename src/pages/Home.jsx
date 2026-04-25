@@ -282,8 +282,8 @@ export default function Home() {
                <ShieldAlert size={26} />
             </div>
             <div>
-               <h3 className="font-black text-amber-800 dark:text-amber-400">Account Approval Pending</h3>
-               <p className="text-sm text-amber-600 dark:text-amber-500/80">Some features (Videos, Courses, Quizzes) are hidden until your account is approved by an administrator.</p>
+                <h3 className="font-black text-amber-800 dark:text-amber-400">Account Approval Pending</h3>
+                <p className="text-sm text-amber-600 dark:text-amber-500/80">Some features (Videos, Courses, Quizzes) are hidden until your StudyMate account is approved by an administrator.</p>
             </div>
           </div>
         )}

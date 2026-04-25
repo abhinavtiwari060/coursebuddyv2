@@ -17,6 +17,7 @@ import QuizPage from './pages/QuizPage';
 import QuizResults from './pages/QuizResults';
 import QuizLeaderboard from './pages/QuizLeaderboard';
 import DrivePlayer from './pages/DrivePlayer';
+import PrivacyPolicy from './pages/PrivacyPolicy';
 import ErrorBoundary from './components/ErrorBoundary';
 
 
@@ -200,6 +201,7 @@ export default function App() {
                 </ProtectedRoute>
               } 
             />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </ErrorBoundary>

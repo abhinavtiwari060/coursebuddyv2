@@ -41,7 +41,7 @@ export default function BugReport({ onClose }) {
         </div>
         <h2 className="text-2xl font-black dark:text-white mb-2">Report Sent! 🎉</h2>
         <p className="text-slate-500 text-sm leading-relaxed mb-6">
-          Your bug report has been sent to the admin. Thank you for helping make Course Buddy better!
+          Your bug report has been sent to the admin. Thank you for helping make StudyMate better!
         </p>
         <button
           onClick={onClose}
