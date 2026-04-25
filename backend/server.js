@@ -1449,12 +1449,22 @@ app.get('/api/admin/quiz/:quizId/assignments', authMiddleware, adminMiddleware, 
   }
 });
 
-// User getting their active assigned quizzes
+// User getting their active assigned quizzes (and any globally active quizzes)
 app.get('/api/quiz/assigned', authMiddleware, async (req, res) => {
   try {
+    // 1. Get explicitly assigned quizzes
     const assignments = await QuizAssignment.find({ userId: req.user.id, accessStatus: 'active' }).populate('quizId');
-    const quizzes = assignments.map(a => a.quizId).filter(q => q !== null);
-    res.json(quizzes);
+    const assignedQuizzes = assignments.map(a => a.quizId).filter(q => q !== null);
+
+    // 2. Get globally active quizzes (that aren't already in the assigned list)
+    const activeQuizzes = await Quiz.find({ 
+      status: 'active', 
+      _id: { $nin: assignedQuizzes.map(q => q._id) } 
+    }).lean();
+
+    // Combine them
+    const allQuizzes = [...assignedQuizzes, ...activeQuizzes];
+    res.json(allQuizzes);
   } catch(err) {
     res.status(500).json({ error: err.message });
   }
@@ -1464,12 +1474,19 @@ app.get('/api/quiz/assigned', authMiddleware, async (req, res) => {
 
 app.get('/api/quiz/active', authMiddleware, async (req, res) => {
   try {
+    // Priority 1: Explicitly assigned active quiz
     const assignments = await QuizAssignment.find({ userId: req.user.id, accessStatus: 'active' }).populate('quizId');
-    const activeAssignedQuiz = assignments.map(a => a.quizId).find(q => q && q.status === 'active');
+    let activeQuiz = assignments.map(a => a.quizId).find(q => q && q.status === 'active');
     
-    if (!activeAssignedQuiz) return res.json(null);
-    const questionCount = await Question.countDocuments({ quizId: activeAssignedQuiz._id });
-    res.json({ ...activeAssignedQuiz.toObject(), questionCount });
+    // Priority 2: Any globally active quiz if no specific assignment is active
+    if (!activeQuiz) {
+      activeQuiz = await Quiz.findOne({ status: 'active' }).sort({ createdAt: -1 });
+    }
+
+    if (!activeQuiz) return res.json(null);
+
+    const questionCount = await Question.countDocuments({ quizId: activeQuiz._id });
+    res.json({ ...activeQuiz.toObject ? activeQuiz.toObject() : activeQuiz, questionCount });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
