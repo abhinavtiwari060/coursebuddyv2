@@ -7,13 +7,14 @@ import {
   Users, Trash2, Clock, PlayCircle, LogOut, ShieldAlert, X, BookOpen,
   CheckCircle2, Trophy, Medal, Crown, BarChart2, Activity, Eye,
   Search, Filter, ChevronDown, TrendingUp, Flame, AlertTriangle, Send, Palette,
-  Bug, ToggleLeft, ToggleRight, Circle, Settings as SettingsIcon, HardDrive
+  Bug, ToggleLeft, ToggleRight, Circle, Settings as SettingsIcon, HardDrive, Sparkles
 } from 'lucide-react';
 import AdminUserLimit from '../components/AdminUserLimit';
 import SuggestedPlaylistsAdmin from '../components/SuggestedPlaylistsAdmin';
 import AdminCourseCreator from '../components/AdminCourseCreator';
 import AdminQuizManager from '../components/AdminQuizManager';
 import AdminDriveManager from '../components/AdminDriveManager';
+import AdminAIQuiz from '../components/AdminAIQuiz';
 import { quizService } from '../api/api';
 
 
@@ -22,14 +23,15 @@ function getInitials(name = '') {
 }
 
 const TABS = [
-  { id: 'users', label: 'Users', icon: <Users size={16} />, color: 'slate' },
-  { id: 'leaderboard', label: 'Leaderboard', icon: <Trophy size={16} />, color: 'amber' },
-  { id: 'courses', label: 'Course Creator', icon: <BookOpen size={16} />, color: 'orange' },
-  { id: 'drive', label: 'Drive Fetcher', icon: <HardDrive size={16} />, color: 'blue' },
-  { id: 'quiz', label: 'Quiz Manager', icon: <BarChart2 size={16} />, color: 'purple' },
-  { id: 'permissions', label: 'Permissions', icon: <ShieldAlert size={16} />, color: 'indigo' },
-  { id: 'bugs', label: 'Bug Reports', icon: <Bug size={16} />, color: 'red' },
-  { id: 'notifications', label: 'Settings', icon: <SettingsIcon size={16} />, color: 'slate' },
+  { id: 'users',         label: 'Users',          icon: <Users size={16} />,       color: 'slate'  },
+  { id: 'leaderboard',   label: 'Leaderboard',    icon: <Trophy size={16} />,      color: 'amber'  },
+  { id: 'courses',       label: 'Course Creator', icon: <BookOpen size={16} />,    color: 'orange' },
+  { id: 'drive',         label: 'Drive Fetcher',  icon: <HardDrive size={16} />,   color: 'blue'   },
+  { id: 'quiz',          label: 'Quiz Manager',   icon: <BarChart2 size={16} />,   color: 'purple' },
+  { id: 'ai_quiz',       label: 'AI Quiz',        icon: <Sparkles size={16} />,    color: 'violet' },
+  { id: 'permissions',   label: 'Permissions',    icon: <ShieldAlert size={16} />, color: 'indigo' },
+  { id: 'bugs',          label: 'Bug Reports',    icon: <Bug size={16} />,         color: 'red'    },
+  { id: 'notifications', label: 'Settings',       icon: <SettingsIcon size={16} />,color: 'slate'  },
 ];
 
 const FEATURE_LABELS = {
@@ -307,13 +309,14 @@ export default function AdminDashboard() {
           {TABS.map(t => {
             const isActive = activeTab === t.id;
             const colorClasses = {
-              slate: 'bg-slate-900 dark:bg-white text-white dark:text-slate-900',
-              amber: 'bg-amber-500 text-white shadow-amber-500/20',
+              slate:  'bg-slate-900 dark:bg-white text-white dark:text-slate-900',
+              amber:  'bg-amber-500  text-white shadow-amber-500/20',
               orange: 'bg-orange-500 text-white shadow-orange-500/20',
-              blue: 'bg-blue-500 text-white shadow-blue-500/20',
+              blue:   'bg-blue-500   text-white shadow-blue-500/20',
               purple: 'bg-purple-500 text-white shadow-purple-500/20',
+              violet: 'bg-violet-600 text-white shadow-violet-500/20',
               indigo: 'bg-indigo-500 text-white shadow-indigo-500/20',
-              red: 'bg-red-500 text-white shadow-red-500/20',
+              red:    'bg-red-500    text-white shadow-red-500/20',
             };
 
             return (
@@ -801,10 +804,16 @@ export default function AdminDashboard() {
         )}
 
         {/* Quiz Manager Tab */}
-
         {activeTab === 'quiz' && (
           <div className="max-w-4xl mx-auto">
             <AdminQuizManager />
+          </div>
+        )}
+
+        {/* AI Quiz Generator Tab */}
+        {activeTab === 'ai_quiz' && (
+          <div className="max-w-5xl mx-auto">
+            <AdminAIQuiz />
           </div>
         )}
 

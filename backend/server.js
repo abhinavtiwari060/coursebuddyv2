@@ -1819,6 +1819,95 @@ app.post('/api/drive/progress', authMiddleware, async (req, res) => {
   }
 });
 
+// ── AI Quiz Generation (Google Gemini) ───────────────────
+app.post('/api/admin/ai-quiz/generate', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { topic, count = 10 } = req.body;
+    if (!topic) return res.status(400).json({ error: 'Topic is required.' });
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: 'GEMINI_API_KEY is not set in backend .env' });
+
+    const prompt = `Generate ${count} MCQ questions on ${topic}.
+
+Return ONLY pure JSON array.
+
+Format:
+[
+  {
+    "question": "Question here",
+    "options": [
+      "Option 1",
+      "Option 2",
+      "Option 3",
+      "Option 4"
+    ],
+    "correctAnswer": "Correct option",
+    "difficulty": "easy/medium/hard"
+  }
+]
+
+Rules:
+- Questions must be unique
+- 4 options only
+- Correct answer must exist inside options
+- No explanations
+- No markdown
+- No extra text
+- Make questions educational
+- Difficulty should vary`;
+
+    const geminiRes = await axios.post(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 8192,
+        }
+      },
+      { headers: { 'Content-Type': 'application/json' }, timeout: 60000 }
+    );
+
+    const raw = geminiRes.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    // Strip markdown code fences if present
+    const cleaned = raw
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```\s*$/, '')
+      .trim();
+
+    let questions;
+    try {
+      questions = JSON.parse(cleaned);
+    } catch {
+      // Try to extract JSON array from the text
+      const match = cleaned.match(/\[[\s\S]*\]/);
+      if (match) questions = JSON.parse(match[0]);
+      else return res.status(500).json({ error: 'Gemini returned invalid JSON. Try again.', raw });
+    }
+
+    if (!Array.isArray(questions)) {
+      return res.status(500).json({ error: 'Expected a JSON array from Gemini.', raw });
+    }
+
+    // Validate & sanitize each question
+    const validated = questions
+      .filter(q => q.question && Array.isArray(q.options) && q.options.length === 4 && q.correctAnswer)
+      .map(q => ({
+        question: String(q.question).trim(),
+        options: q.options.map(o => String(o).trim()),
+        correctAnswer: String(q.correctAnswer).trim(),
+        difficulty: ['easy', 'medium', 'hard'].includes(q.difficulty) ? q.difficulty : 'medium',
+      }));
+
+    res.json({ questions: validated, topic, count: validated.length });
+  } catch (err) {
+    console.error('[AI QUIZ] Error:', err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.error?.message || err.message });
+  }
+});
+
 // ── START SERVER ─────────────────────
 
 const PORT = process.env.PORT || 5000;

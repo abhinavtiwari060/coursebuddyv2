@@ -36,11 +36,8 @@ export default function Footer() {
           </div>
 
           <div className="flex flex-col items-center md:items-end">
-             <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-black text-slate-400 uppercase tracking-tighter">Powered By</span>
-                <span className="text-xs font-black text-orange-500">Google Gemini</span>
-             </div>
              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">&copy; 2026 StudyMate Global</p>
+             <p className="text-[10px] text-slate-400 mt-1">All rights reserved.</p>
           </div>
 
         </div>
