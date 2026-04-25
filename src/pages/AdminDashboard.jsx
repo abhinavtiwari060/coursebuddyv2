@@ -33,6 +33,8 @@ const TABS = [
 ];
 
 const FEATURE_LABELS = {
+  canAccessLibrary: 'Drive Library',
+  canAccessCourses: 'YouTube Courses',
   canAddCourse: 'Add Course',
   canDeleteCourse: 'Delete Course',
   canUsePomodoro: 'Pomodoro Timer',
@@ -40,6 +42,8 @@ const FEATURE_LABELS = {
   canUseLeaderboard: 'Leaderboard',
   canReportBug: 'Bug Report',
 };
+
+
 
 export default function AdminDashboard() {
   const { user, logout } = useAuth();
@@ -166,7 +170,32 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleUpdateApproval = async (userId, approvalStatus) => {
+    try {
+      const u = await adminService.updateApproval(userId, approvalStatus);
+      setUsers(prev => prev.map(x => x._id === userId ? { ...x, approvalStatus: u.approvalStatus, approvalTimestamp: u.approvalTimestamp } : x));
+      if (userDetails?.user?._id === userId) {
+        setUserDetails(prev => ({ ...prev, user: { ...prev.user, approvalStatus: u.approvalStatus, approvalTimestamp: u.approvalTimestamp } }));
+      }
+    } catch (err) {
+      alert('Failed to update approval status');
+    }
+  };
+
+  const handleUpdateAccessLevel = async (userId, accessLevel) => {
+    try {
+      const u = await adminService.updateAccessLevel(userId, accessLevel);
+      setUsers(prev => prev.map(x => x._id === userId ? { ...x, accessLevel: u.accessLevel } : x));
+      if (userDetails?.user?._id === userId) {
+        setUserDetails(prev => ({ ...prev, user: { ...prev.user, accessLevel: u.accessLevel } }));
+      }
+    } catch (err) {
+      alert('Failed to update access level');
+    }
+  };
+
   const handleDeleteUser = async (id) => {
+
     if (!window.confirm('Delete this user and ALL their data permanently?')) return;
     try {
       await adminService.deleteUser(id);
@@ -526,7 +555,47 @@ export default function AdminDashboard() {
                         </div>
                       </div>
                     )}
-                    {/* Feature Toggles */}
+                    {/* Approval Management */}
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700">
+                      <h3 className="font-bold text-sm dark:text-slate-200 mb-4 flex items-center gap-2">
+                        <ShieldAlert size={15} className="text-indigo-500" /> Account Approval
+                      </h3>
+                      <div className="flex flex-wrap gap-3 mb-4">
+                        {['pending', 'approved', 'rejected'].map(status => (
+                          <button
+                            key={status}
+                            onClick={() => handleUpdateApproval(userDetails.user._id, status)}
+                            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition ${
+                              userDetails.user.approvalStatus === status
+                                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
+                                : 'bg-white dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700'
+                            }`}
+                          >
+                            {status}
+                          </button>
+                        ))}
+                      </div>
+                      
+                      <div className="flex items-center gap-3">
+                         <label className="text-xs font-bold text-slate-500 uppercase">Access Level:</label>
+                         <select 
+                           value={userDetails.user.accessLevel || 1}
+                           onChange={(e) => handleUpdateAccessLevel(userDetails.user._id, parseInt(e.target.value))}
+                           className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-bold dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
+                         >
+                            {[1, 2, 3, 4, 5].map(v => <option key={v} value={v}>Level {v}</option>)}
+                         </select>
+                      </div>
+
+                      {userDetails.user.approvalTimestamp && (
+                        <p className="mt-3 text-[10px] text-slate-400 font-medium italic">
+                          Last action at: {new Date(userDetails.user.approvalTimestamp).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Features List */}
+
                     <div>
                       <h3 className="font-bold text-sm dark:text-slate-200 mb-3 flex items-center gap-2">
                         <ToggleLeft size={15} className="text-purple-500" /> Feature Access

@@ -13,6 +13,8 @@ const userSchema = new mongoose.Schema({
   features: {
     type: Object,
     default: {
+      canAccessCourses: false,  // Requires Admin Approval
+      canAccessLibrary: false,  // Requires Admin Approval
       canAddCourse: true,
       canDeleteCourse: true,
       canUsePomodoro: true,
@@ -20,13 +22,18 @@ const userSchema = new mongoose.Schema({
       canUseLeaderboard: true,
       canReportBug: true
     }
+
   },
   quizRole: { 
     type: String, 
     enum: ['normal', 'question_creator', 'quiz_manager', 'super_admin'], 
     default: 'normal' 
   },
+  approvalStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+  accessLevel: { type: Number, default: 1 },
+  approvalTimestamp: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now }
+
 });
 
 export default mongoose.model('User', userSchema);

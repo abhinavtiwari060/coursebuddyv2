@@ -31,16 +31,19 @@ import { Lightbulb, GripVertical, LayoutDashboard, Video, BarChart2, BookOpen, S
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
-  { id: 'videos',    label: 'Videos',    icon: <Video size={18} /> },
-  { id: 'quizzes',   label: 'Live Quizzes', icon: <Trophy size={18} /> },
-  { id: 'analytics', label: 'Analytics', icon: <BarChart2 size={18} /> },
-  { id: 'courses',   label: 'Courses',   icon: <BookOpen size={18} /> },
+  { id: 'videos',    label: 'Videos',    icon: <Video size={18} />, feature: 'canAccessCourses', restricted: true },
+  { id: 'quizzes',   label: 'Live Quizzes', icon: <Trophy size={18} />, feature: 'canUseLeaderboard', restricted: true },
+  { id: 'analytics', label: 'Analytics', icon: <BarChart2 size={18} />, feature: 'canUseLeaderboard', restricted: true },
+  { id: 'courses',   label: 'Courses',   icon: <BookOpen size={18} />, feature: 'canAccessCourses', restricted: true },
   { id: 'settings',  label: 'Settings',  icon: <Settings size={18} /> },
 ];
 
 
+
+
 export default function Home() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
+
   const navigate = useNavigate();
 
   const [courses, setCourses] = useState([]);
@@ -62,12 +65,18 @@ export default function Home() {
 
     const loadData = async () => {
       try {
+        console.log(`[DASHBOARD] Fetching content for user: ${user.email}`);
         const [vids, crs, strk, driveCrs] = await Promise.all([
           videoService.getAll(),
           courseService.getAll(),
           streakService.get(),
-          driveService.getCourses().catch(() => [])
+          driveService.getCourses().catch(() => []),
+          refreshUser() // Fetch latest permissions
         ]);
+        console.log(`[DASHBOARD] Content loaded: ${vids.length} videos, ${crs.length} courses, ${driveCrs.length} drive courses`);
+        console.log(`[DASHBOARD] Active Features:`, user.features);
+
+
         // Videos already come sorted by order from backend
         setVideos(vids);
         setCourses(crs.map(c => ({ id: c._id, name: c.name })));
@@ -118,7 +127,16 @@ export default function Home() {
     }
   };
 
+  useEffect(() => {
+    // Poll for permission/feature updates every 30 seconds
+    const pollInterval = setInterval(() => {
+      refreshUser();
+    }, 30000);
+    return () => clearInterval(pollInterval);
+  }, []);
+
   const handleToggleComplete = async (id) => {
+
     const target = videos.find(v => v._id === id || v.id === id);
     if (!target) return;
     
@@ -237,7 +255,11 @@ export default function Home() {
 
       <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-orange-200/60 dark:border-slate-800 sticky top-[65px] z-10">
         <div className="max-w-7xl mx-auto px-4 flex gap-1 overflow-x-auto">
-          {TABS.map(tab => (
+          {TABS.filter(tab => {
+            if (tab.restricted && user?.approvalStatus !== 'approved') return false;
+            return !tab.feature || user?.features?.[tab.feature] !== false;
+          }).map(tab => (
+
             <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-5 py-3.5 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === tab.id ? 'border-orange-500 text-orange-600 dark:text-orange-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>
               {tab.icon}{tab.label}
             </button>
@@ -254,7 +276,20 @@ export default function Home() {
       </div>
 
       <main className="flex-1 max-w-7xl mx-auto px-4 py-8 w-full">
+        {user?.approvalStatus !== 'approved' && (
+          <div className="mb-8 p-6 rounded-3xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 flex items-center gap-4 animate-pulse-subtle">
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-amber-600">
+               <ShieldAlert size={26} />
+            </div>
+            <div>
+               <h3 className="font-black text-amber-800 dark:text-amber-400">Account Approval Pending</h3>
+               <p className="text-sm text-amber-600 dark:text-amber-500/80">Some features (Videos, Courses, Quizzes) are hidden until your account is approved by an administrator.</p>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'dashboard' && (
+
           <>
             <LiveQuizBanner />
             <SuggestedPlaylists />
@@ -279,13 +314,16 @@ export default function Home() {
               >
                 My Videos
               </button>
-              <button 
-                onClick={() => setVideoTab('drive')}
-                className={`py-3 px-4 font-bold border-b-2 transition-all ${videoTab === 'drive' ? 'border-blue-500 text-blue-500' : 'border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2'}`}
-              >
-                <HardDrive size={16} className={videoTab === 'drive' ? 'text-blue-500' : 'text-slate-400 opacity-50'} />
-                Drive Library
-              </button>
+              {user?.features?.canAccessLibrary !== false && (
+                <button 
+                  onClick={() => setVideoTab('drive')}
+                  className={`py-3 px-4 font-bold border-b-2 transition-all ${videoTab === 'drive' ? 'border-blue-500 text-blue-500' : 'border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2'}`}
+                >
+                  <HardDrive size={16} className={videoTab === 'drive' ? 'text-blue-500' : 'text-slate-400 opacity-50'} />
+                  Drive Library
+                </button>
+              )}
+
             </div>
 
             {videoTab === 'youtube' ? (

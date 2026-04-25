@@ -143,7 +143,10 @@ export const adminService = {
   deleteUser: (id) => api.delete(`/api/admin/users/${id}`).then((r) => r.data),
   toggleBlock: (id) => api.put(`/api/admin/users/${id}/block`).then((r) => r.data),
   updateFeatures: (id, features) => api.put(`/api/admin/users/${id}/features`, { features }).then((r) => r.data),
+  updateApproval: (id, approvalStatus) => api.put(`/api/admin/users/${id}/approval`, { approvalStatus }).then((r) => r.data),
+  updateAccessLevel: (id, accessLevel) => api.put(`/api/admin/users/${id}/access-level`, { accessLevel }).then((r) => r.data),
   getLeaderboard: () => api.get("/api/admin/leaderboard").then((r) => r.data),
+
   sendPush: (data) => api.post("/api/admin/push", data).then((r) => r.data),
   updateSettings: (settings) => api.post("/api/admin/settings", { settings }).then((r) => r.data),
   setMaxUsers: (maxUsers) => api.post("/api/admin/settings/max-users", { maxUsers }).then((r) => r.data),

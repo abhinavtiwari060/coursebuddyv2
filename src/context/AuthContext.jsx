@@ -1,5 +1,6 @@
 import { createContext, useState, useEffect, useContext } from 'react';
-import api, { authService } from '../api/api';
+import api, { authService, profileService } from '../api/api';
+
 import { requestForToken, onMessageListener, signInWithGoogle } from '../utils/firebase';
 
 const AuthContext = createContext();
@@ -47,7 +48,21 @@ export const AuthProvider = ({ children }) => {
     }
   }, [user]);
 
+  const refreshUser = async () => {
+    try {
+      const data = await profileService.get();
+      if (data && data.user) {
+        localStorage.setItem('studyflow_user', JSON.stringify(data.user));
+        setUser(data.user);
+        return data.user;
+      }
+    } catch (err) {
+      console.log("Failed to refresh user profile", err);
+    }
+  };
+
   const login = async (email, password) => {
+
     const data = await authService.login(email, password);
     const { token, user: userData } = data;
     
@@ -97,7 +112,8 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, loginWithGoogle, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, loginWithGoogle, logout, refreshUser }}>
+
       {!loading && children}
     </AuthContext.Provider>
   );

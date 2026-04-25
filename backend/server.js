@@ -845,7 +845,38 @@ app.delete('/api/admin/users/:id', authMiddleware, adminMiddleware, async (req, 
 
 app.put('/api/admin/users/:id/features', authMiddleware, adminMiddleware, async (req, res) => {
   try {
+    console.log(`[ADMIN] Updating features for user ${req.params.id}:`, req.body.features);
     const u = await User.findByIdAndUpdate(req.params.id, { features: req.body.features }, { new: true });
+    console.log(`[DATABASE] Permissions saved successfully for ${u.email}`);
+    res.json(u);
+  } catch (err) {
+    console.error(`[ERROR] Permission update failed: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+app.put('/api/admin/users/:id/approval', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { approvalStatus } = req.body;
+    console.log(`[ADMIN] Setting approval status for ${req.params.id} to ${approvalStatus}`);
+    const u = await User.findByIdAndUpdate(
+      req.params.id, 
+      { approvalStatus, approvalTimestamp: new Date() }, 
+      { new: true }
+    );
+    console.log(`[DATABASE] Approval updated for ${u.email}`);
+    res.json(u);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/admin/users/:id/access-level', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { accessLevel } = req.body;
+    console.log(`[ADMIN] Setting access level for ${req.params.id} to ${accessLevel}`);
+    const u = await User.findByIdAndUpdate(req.params.id, { accessLevel }, { new: true });
     res.json(u);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -853,7 +884,9 @@ app.put('/api/admin/users/:id/features', authMiddleware, adminMiddleware, async 
 });
 
 app.get('/api/admin/bug-reports', authMiddleware, adminMiddleware, async (req, res) => {
+
   try {
+
     const reports = await BugReport.find().populate('userId', 'name email').sort({ createdAt: -1 });
     res.json(reports);
   } catch (err) {
