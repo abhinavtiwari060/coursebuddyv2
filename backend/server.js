@@ -19,9 +19,11 @@ import BugReport from './models/BugReport.js';
 import Notification from './models/Notification.js';
 import admin from 'firebase-admin';
 
-// Telegram Models
-import TelegramSession from './models/TelegramSession.js';
-import TelegramVideo from './models/TelegramVideo.js';
+// Quiz & Progress Models
+import Quiz from './models/Quiz.js';
+import Question from './models/Question.js';
+import QuizAttempt from './models/QuizAttempt.js';
+import UserProgress from './models/UserProgress.js';
 
 import fs from 'fs';
 import path from 'path';
@@ -1094,288 +1096,407 @@ app.get('/api/admin/courses/assigned', authMiddleware, adminMiddleware, async (r
   }
 });
 
-// ── Telegram Integration Routes ─────────────────────
+// ── Admin Course Delete ─────────────────────
 
-const getPyServiceUrl = () => {
-  const url = process.env.PY_SERVICE_URL;
-  if (!url) {
-    console.error("🔥 CRITICAL ERROR: PY_SERVICE_URL environment variable is missing.");
-    return null;
+/**
+ * DELETE /api/admin/course/:courseId
+ * Cascading delete: removes the Course and all its Videos.
+ */
+app.delete('/api/admin/course/:courseId', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const course = await Course.findById(req.params.courseId);
+    if (!course) return res.status(404).json({ error: 'Course not found' });
+
+    const delVideos = await Video.deleteMany({ userId: course.userId, course: course.name });
+    await Course.findByIdAndDelete(req.params.courseId);
+
+    res.json({ message: 'Course and all related videos deleted', videosDeleted: delVideos.deletedCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  return url.replace(/\/$/, ""); // remove trailing slash
+});
+
+// ── YouTube Playlist Search ─────────────────────
+
+/**
+ * GET /api/admin/youtube/search-playlists?q=keyword
+ * Search YouTube for playlists (not videos) using Data API v3.
+ */
+app.get('/api/admin/youtube/search-playlists', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q) return res.status(400).json({ error: 'Query parameter q is required' });
+
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: 'YOUTUBE_API_KEY is not configured on the server.' });
+
+    const searchRes = await axios.get('https://www.googleapis.com/youtube/v3/search', {
+      params: {
+        part: 'snippet',
+        type: 'playlist',
+        maxResults: 10,
+        q,
+        key: apiKey,
+      }
+    });
+
+    const playlistIds = (searchRes.data.items || []).map(i => i.id.playlistId).join(',');
+    
+    // Fetch extra detail (video count) for the found playlists
+    let detailMap = {};
+    if (playlistIds) {
+      const detailRes = await axios.get('https://www.googleapis.com/youtube/v3/playlists', {
+        params: { part: 'snippet,contentDetails', id: playlistIds, key: apiKey }
+      });
+      for (const item of detailRes.data.items || []) {
+        detailMap[item.id] = item.contentDetails?.itemCount || 0;
+      }
+    }
+
+    const playlists = (searchRes.data.items || []).map(item => ({
+      id: item.id.playlistId,
+      title: item.snippet.title,
+      description: item.snippet.description,
+      thumbnail: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url || '',
+      channelTitle: item.snippet.channelTitle,
+      videoCount: detailMap[item.id.playlistId] || 0,
+      url: `https://www.youtube.com/playlist?list=${item.id.playlistId}`,
+    }));
+
+    res.json({ playlists });
+  } catch (err) {
+    console.error('YouTube search error:', err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.error?.message || err.message });
+  }
+});
+
+// ── User Progress Routes ─────────────────────
+
+app.post('/api/progress/save', authMiddleware, async (req, res) => {
+  try {
+    const { courseId, lastVideoId, watchedVideoId, watchPosition } = req.body;
+
+    let progress = await UserProgress.findOne({ userId: req.user.id, courseId });
+    if (!progress) {
+      progress = new UserProgress({ userId: req.user.id, courseId });
+    }
+
+    if (lastVideoId) progress.lastVideoId = lastVideoId;
+    if (watchPosition !== undefined) progress.watchPosition = watchPosition;
+    if (watchedVideoId && !progress.watchedVideos.map(String).includes(String(watchedVideoId))) {
+      progress.watchedVideos.push(watchedVideoId);
+    }
+
+    // Compute progress percent
+    const totalVideos = await Video.countDocuments({ userId: req.user.id, course: { $exists: true } });
+    if (totalVideos > 0) {
+      progress.progressPercent = Math.round((progress.watchedVideos.length / totalVideos) * 100);
+    }
+
+    await progress.save();
+    res.json(progress);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/progress/:courseId', authMiddleware, async (req, res) => {
+  try {
+    const progress = await UserProgress.findOne({ userId: req.user.id, courseId: req.params.courseId });
+    res.json(progress || {});
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Quiz Administration Routes ─────────────────────
+
+// Quiz permission middleware
+const quizPermission = (minRole) => (req, res, next) => {
+  const roleOrder = ['normal', 'question_creator', 'quiz_manager', 'super_admin'];
+  const userRole = req.user.quizRole || 'normal';
+  if (req.user.role === 'admin') return next(); // platform admin can do anything
+  if (roleOrder.indexOf(userRole) >= roleOrder.indexOf(minRole)) return next();
+  return res.status(403).json({ error: `Requires ${minRole} role or higher` });
 };
 
-app.post('/api/telegram/connect', authMiddleware, async (req, res) => {
+app.get('/api/admin/quiz/all', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const pyUrl = getPyServiceUrl();
-    if (!pyUrl) return res.status(503).json({ error: "Telegram Integration is not configured on this server.", detail: "PY_SERVICE_URL is missing." });
-
-    const { phone } = req.body;
-    const response = await axios.post(`${pyUrl}/api/auth/send_code`, {
-      user_id: req.user.id.toString(),
-      phone
-    });
-    
-    res.json(response.data);
-  } catch (err) {
-    console.error("❌ Telegram /connect Error:", err.message);
-    if (err.response) {
-      console.error("   Response Data:", err.response.data);
-      return res.status(err.response.status).json(err.response.data);
-    }
-    console.error(err.stack);
-    res.status(500).json({ error: "Failed to connect to Telegram service", detail: err.message });
-  }
-});
-
-app.post('/api/telegram/verify', authMiddleware, async (req, res) => {
-  try {
-    const pyUrl = getPyServiceUrl();
-    if (!pyUrl) return res.status(503).json({ error: "Telegram Integration is not configured.", detail: "PY_SERVICE_URL is missing." });
-
-    const { phone, phone_code_hash, code, session_string } = req.body;
-    console.log("VERIFY PAYLOAD:", { phone, phone_code_hash, code, session_string });
-    
-    const response = await axios.post(`${pyUrl}/api/auth/verify_code`, {
-      user_id: req.user.id.toString(),
-      phone,
-      phone_code_hash,
-      code,
-      session_string
-    });
-    console.log("VERIFY RESPONSE:", response.data);
-    
-    res.json(response.data);
-  } catch (err) {
-    console.error("❌ Telegram /verify Error:", err.message);
-    if (err.response) {
-      console.error("   Response Data:", err.response.data);
-      return res.status(err.response.status).json(err.response.data);
-    }
-    console.error(err.stack);
-    res.status(500).json({ error: "Failed to verify Telegram code", detail: err.message });
-  }
-});
-
-app.get('/api/telegram/channels', authMiddleware, async (req, res) => {
-  try {
-    const pyUrl = getPyServiceUrl();
-    if (!pyUrl) return res.status(503).json({ error: "Telegram Integration is not configured.", detail: "PY_SERVICE_URL is missing." });
-
-    const response = await axios.get(`${pyUrl}/api/channels`, {
-      params: { user_id: req.user.id.toString() }
-    });
-    res.json(response.data);
-  } catch (err) {
-    console.error("❌ Telegram /channels Error:", err.message);
-    if (err.response) {
-      console.error("   Response Data:", err.response.data);
-      return res.status(err.response.status).json(err.response.data);
-    }
-    console.error(err.stack);
-    res.status(500).json({ error: "Failed to fetch Telegram channels", detail: err.message });
-  }
-});
-
-app.post('/api/telegram/sync', authMiddleware, async (req, res) => {
-  try {
-    const pyUrl = getPyServiceUrl();
-    if (!pyUrl) return res.status(503).json({ error: "Telegram Integration is not configured.", detail: "PY_SERVICE_URL is missing." });
-
-    const { channel_id } = req.body;
-    const response = await axios.post(`${pyUrl}/api/sync`, {
-      user_id: req.user.id.toString(),
-      channel_id: parseInt(channel_id),
-      limit: 100 // Increased from 50 to give real-time loader more beef
-    });
-    
-    res.json(response.data);
-  } catch (err) {
-    console.error("❌ Telegram /sync Error:", err.message);
-    if (err.response) {
-      console.error("   Response Data:", err.response.data);
-      return res.status(err.response.status).json(err.response.data);
-    }
-    console.error(err.stack);
-    res.status(500).json({ error: "Failed to sync Telegram channel", detail: err.message });
-  }
-});
-
-app.get('/api/telegram/sync-status', authMiddleware, async (req, res) => {
-  try {
-    const pyUrl = getPyServiceUrl();
-    if (!pyUrl) return res.status(503).json({ error: "Telegram Integration is not configured." });
-
-    // Force explicitly bypass all caches
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    res.setHeader('Surrogate-Control', 'no-store');
-
-    const response = await axios.get(`${pyUrl}/api/sync/status`, {
-      params: { user_id: req.user.id.toString(), t: Date.now() }
-    });
-    res.json(response.data);
-  } catch (err) {
-    res.status(500).json({ error: "Failed to fetch Telegram sync status" });
-  }
-});
-
-app.get('/api/telegram/status', authMiddleware, async (req, res) => {
-  try {
-    const pyUrl = getPyServiceUrl();
-    if (!pyUrl) return res.status(503).json({ error: "Telegram Integration is not configured.", detail: "PY_SERVICE_URL is missing." });
-
-    const response = await axios.get(`${pyUrl}/api/auth/status`, {
-      params: { user_id: req.user.id.toString() }
-    });
-    res.json(response.data);
-  } catch (err) {
-    console.error("❌ Telegram /status Error:", err.message);
-    res.status(500).json({ error: "Failed to fetch Telegram status" });
-  }
-});
-
-app.get('/api/telegram/health', async (req, res) => {
-  try {
-    const pyUrl = getPyServiceUrl();
-    if (!pyUrl) return res.status(503).json({ error: "Telegram Integration is not configured.", detail: "PY_SERVICE_URL is missing." });
-
-    const response = await axios.get(`${pyUrl}/api/health`, { timeout: 5000 });
-    res.json({
-      configured: true,
-      python_service: response.data,
-      status: "Healthy"
-    });
-  } catch (err) {
-    console.error("❌ Telegram /health Error:", err.message);
-    res.status(503).json({ error: "Python service is unreachable", detail: err.message });
-  }
-});
-
-app.get('/api/telegram/videos', authMiddleware, async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-
-    const query = { user_id: req.user.id.toString() };
-    
-    // Sort by sync_date DESC so newest videos show up correctly on append
-    const videos = await TelegramVideo.find(query)
-      .sort({ sync_date: -1 })
-      .skip(skip)
-      .limit(limit)
-      .select('video_id telegram_message_id channel_id channel_name channel_username caption thumbnail telegram_link telegramDeepLink telegramWebLink telegramPrivateLink duration size_mb upload_time sync_date file_path');
-      
-    const totalCount = await TelegramVideo.countDocuments(query);
-    const hasMore = skip + videos.length < totalCount;
-
-    res.json({
-      videos,
-      hasMore,
-      totalCount,
-      page
-    });
+    const quizzes = await Quiz.find().sort({ createdAt: -1 }).lean();
+    // Attach question count
+    const result = await Promise.all(quizzes.map(async q => ({
+      ...q,
+      questionCount: await Question.countDocuments({ quizId: q._id }),
+      attemptCount: await QuizAttempt.countDocuments({ quizId: q._id }),
+    })));
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Secure endpoint to stream the locally downloaded video
-app.get('/api/telegram/videos/stream/:id', authMiddleware, async (req, res) => {
+app.post('/api/admin/quiz/create', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const video = await TelegramVideo.findOne({ video_id: req.params.id, user_id: req.user.id.toString() });
-    if (!video) return res.status(404).json({ error: 'Video not found' });
+    const { title, description, courseId, duration, isRetryAllowed } = req.body;
+    const quiz = await Quiz.create({
+      title,
+      description,
+      courseId: courseId || null,
+      duration: duration || 30,
+      isRetryAllowed: isRetryAllowed || false,
+      createdBy: req.user.id,
+    });
+    res.status(201).json(quiz);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-    const videoPath = video.file_path;
-    if (!fs.existsSync(videoPath)) {
-      return res.status(404).json({ error: 'Video file missing on server' });
+app.get('/api/admin/quiz/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const quiz = await Quiz.findById(req.params.id);
+    if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
+    const questions = await Question.find({ quizId: quiz._id }).sort({ order: 1 });
+    res.json({ quiz, questions });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/admin/quiz/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const quiz = await Quiz.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
+    res.json(quiz);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/quiz/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    await Question.deleteMany({ quizId: req.params.id });
+    await QuizAttempt.deleteMany({ quizId: req.params.id });
+    await Quiz.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Quiz and all related data deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/quiz/:id/start', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const quiz = await Quiz.findByIdAndUpdate(
+      req.params.id,
+      { status: 'active', startTime: new Date() },
+      { new: true }
+    );
+    if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
+    res.json({ message: 'Quiz started', quiz });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/quiz/:id/stop', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const quiz = await Quiz.findByIdAndUpdate(
+      req.params.id,
+      { status: 'ended', endTime: new Date() },
+      { new: true }
+    );
+    if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
+    res.json({ message: 'Quiz ended', quiz });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Question Management ─────────────────────
+
+app.get('/api/admin/quiz/:quizId/questions', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const questions = await Question.find({ quizId: req.params.quizId }).sort({ order: 1 });
+    res.json(questions);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/quiz/:quizId/questions', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const count = await Question.countDocuments({ quizId: req.params.quizId });
+    const question = await Question.create({
+      ...req.body,
+      quizId: req.params.quizId,
+      order: req.body.order !== undefined ? req.body.order : count + 1,
+    });
+    res.status(201).json(question);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/admin/questions/:qId', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const question = await Question.findByIdAndUpdate(req.params.qId, req.body, { new: true });
+    if (!question) return res.status(404).json({ error: 'Question not found' });
+    res.json(question);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/questions/:qId', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    await Question.findByIdAndDelete(req.params.qId);
+    res.json({ message: 'Question deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Quiz Permission Management ─────────────────────
+
+app.put('/api/admin/users/:id/quiz-role', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { quizRole } = req.body;
+    const user = await User.findByIdAndUpdate(req.params.id, { quizRole }, { new: true }).select('-password');
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── User Quiz Routes ─────────────────────
+
+app.get('/api/quiz/active', authMiddleware, async (req, res) => {
+  try {
+    const quiz = await Quiz.findOne({ status: 'active' }).sort({ startTime: -1 });
+    if (!quiz) return res.json(null);
+    const questionCount = await Question.countDocuments({ quizId: quiz._id });
+    res.json({ ...quiz.toObject(), questionCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/quiz/:id', authMiddleware, async (req, res) => {
+  try {
+    const quiz = await Quiz.findById(req.params.id);
+    if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
+
+    // Don't expose correct answers to user
+    const questions = await Question.find({ quizId: quiz._id })
+      .sort({ order: 1 })
+      .select('-correctAnswer -explanation');
+
+    // Check if user already attempted (and retry not allowed)
+    const attempt = await QuizAttempt.findOne({ userId: req.user.id, quizId: quiz._id });
+    
+    res.json({ quiz, questions, alreadyAttempted: !!attempt });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/quiz/:id/submit', authMiddleware, async (req, res) => {
+  try {
+    const quiz = await Quiz.findById(req.params.id);
+    if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
+
+    // Check re-attempt
+    const existingAttempt = await QuizAttempt.findOne({ userId: req.user.id, quizId: quiz._id });
+    if (existingAttempt && !quiz.isRetryAllowed) {
+      return res.status(400).json({ error: 'You have already submitted this quiz.' });
     }
 
-    const stat = fs.statSync(videoPath);
-    const fileSize = stat.size;
-    const range = req.headers.range;
+    const { answers, timeTaken } = req.body; // answers: [{ questionId, selected }]
+    const questions = await Question.find({ quizId: quiz._id });
 
-    if (range) {
-      const parts = range.replace(/bytes=/, "").split("-");
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-      const chunksize = (end - start) + 1;
-      const file = fs.createReadStream(videoPath, { start, end });
-      const head = {
-        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-        'Accept-Ranges': 'bytes',
-        'Content-Length': chunksize,
-        'Content-Type': 'video/mp4',
-      };
-      res.writeHead(206, head);
-      file.pipe(res);
+    // Grade answers
+    let score = 0;
+    const gradedAnswers = answers.map(a => {
+      const q = questions.find(q => String(q._id) === String(a.questionId));
+      const isCorrect = q && a.selected === q.correctAnswer;
+      if (isCorrect) score++;
+      return { questionId: a.questionId, selected: a.selected };
+    });
+
+    // Ranking formula: (score * 10) + speed bonus (1 point per 10s under quiz duration)
+    const quizDurationSecs = quiz.duration * 60;
+    const speedBonus = Math.max(0, Math.floor((quizDurationSecs - (timeTaken || 0)) / 10));
+    const rankScore = (score * 10) + speedBonus;
+
+    // Save attempt (upsert if retry allowed)
+    const attemptData = {
+      userId: req.user.id,
+      quizId: quiz._id,
+      answers: gradedAnswers,
+      score,
+      totalQuestions: questions.length,
+      timeTaken: timeTaken || 0,
+      rankScore,
+      submittedAt: new Date(),
+    };
+
+    let attempt;
+    if (existingAttempt) {
+      attempt = await QuizAttempt.findByIdAndUpdate(existingAttempt._id, attemptData, { new: true });
     } else {
-      const head = {
-        'Content-Length': fileSize,
-        'Content-Type': 'video/mp4',
-      };
-      res.writeHead(200, head);
-      fs.createReadStream(videoPath).pipe(res);
+      attempt = await QuizAttempt.create(attemptData);
     }
+
+    // Compute rank across all attempts
+    const allAttempts = await QuizAttempt.find({ quizId: quiz._id }).sort({ rankScore: -1 });
+    const rank = allAttempts.findIndex(a => String(a.userId) === String(req.user.id)) + 1;
+    await QuizAttempt.findByIdAndUpdate(attempt._id, { rank });
+    attempt.rank = rank;
+
+    res.json({ message: 'Quiz submitted!', score, total: questions.length, rankScore, rank, timeTaken });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// One-time backfill: compute deep links for existing records that predate this feature
-app.post('/api/telegram/videos/backfill-links', authMiddleware, async (req, res) => {
+app.get('/api/quiz/:id/results', authMiddleware, async (req, res) => {
   try {
-    const docs = await TelegramVideo.find({
-      user_id: req.user.id.toString(),
-      telegramDeepLink: { $exists: false }
-    });
+    const quiz = await Quiz.findById(req.params.id);
+    if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
 
-    let updated = 0;
-    for (const doc of docs) {
-      const stripped = String(doc.channel_id).replace('-100', '');
-      const username  = doc.channel_username || null;
+    const attempt = await QuizAttempt.findOne({ userId: req.user.id, quizId: quiz._id });
+    if (!attempt) return res.status(404).json({ error: 'No attempt found. Please submit the quiz first.' });
 
-      let deepLink, webLink, privateLink;
-      if (username) {
-        deepLink    = `tg://resolve?domain=${username}&post=${doc.telegram_message_id}`;
-        webLink     = `https://t.me/${username}/${doc.telegram_message_id}`;
-        privateLink = `https://t.me/c/${stripped}/${doc.telegram_message_id}`;
-      } else {
-        deepLink    = `tg://privatepost?channel=${stripped}&post=${doc.telegram_message_id}`;
-        webLink     = `https://t.me/c/${stripped}/${doc.telegram_message_id}`;
-        privateLink = webLink;
-      }
+    // Get questions with correct answers for review
+    const questions = await Question.find({ quizId: quiz._id }).sort({ order: 1 });
 
-      await TelegramVideo.updateOne(
-        { _id: doc._id },
-        { $set: { telegramDeepLink: deepLink, telegramWebLink: webLink, telegramPrivateLink: privateLink } }
-      );
-      updated++;
-    }
-    res.json({ success: true, updated });
+    res.json({ quiz, attempt, questions });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Proxy thumbnail images
-app.get('/api/telegram/thumb/:filename', async (req, res) => {
+app.get('/api/quiz/:id/leaderboard', authMiddleware, async (req, res) => {
   try {
-    const pyUrl = getPyServiceUrl();
-    if (!pyUrl) return res.status(503).end();
-    
-    const response = await axios({
-      method: 'get',
-      url: `${pyUrl}/downloads/${req.params.filename}`,
-      responseType: 'stream'
-    });
-    
-    res.setHeader('Content-Type', 'image/jpeg');
-    response.data.pipe(res);
+    const attempts = await QuizAttempt.find({ quizId: req.params.id })
+      .sort({ rankScore: -1 })
+      .populate('userId', 'name avatar email');
+
+    const leaderboard = attempts.map((a, idx) => ({
+      rank: idx + 1,
+      userId: a.userId?._id,
+      name: a.userId?.name || 'Unknown',
+      avatar: a.userId?.avatar || '',
+      score: a.score,
+      totalQuestions: a.totalQuestions,
+      timeTaken: a.timeTaken,
+      rankScore: a.rankScore,
+    }));
+
+    res.json(leaderboard);
   } catch (err) {
-    res.status(404).end();
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -1390,3 +1511,4 @@ mongoose.connect(process.env.MONGO_URI, { family: 4 })
     });
   })
   .catch(err => console.log("❌ DB Error:", err));
+

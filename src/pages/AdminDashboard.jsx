@@ -12,6 +12,8 @@ import {
 import AdminUserLimit from '../components/AdminUserLimit';
 import SuggestedPlaylistsAdmin from '../components/SuggestedPlaylistsAdmin';
 import AdminCourseCreator from '../components/AdminCourseCreator';
+import AdminQuizManager from '../components/AdminQuizManager';
+import { quizService } from '../api/api';
 
 function getInitials(name = '') {
   return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
@@ -21,6 +23,8 @@ const TABS = [
   { id: 'users', label: 'Users', icon: <Users size={16} /> },
   { id: 'leaderboard', label: 'Leaderboard', icon: <Trophy size={16} /> },
   { id: 'courses', label: 'Course Creator', icon: <BookOpen size={16} /> },
+  { id: 'quiz', label: 'Quiz Manager', icon: <BarChart2 size={16} /> },
+  { id: 'permissions', label: 'Permissions', icon: <ShieldAlert size={16} /> },
   { id: 'bugs', label: 'Bug Reports', icon: <Bug size={16} /> },
   { id: 'notifications', label: 'Settings & Push', icon: <SettingsIcon size={16} /> },
 ];
@@ -55,6 +59,9 @@ export default function AdminDashboard() {
   // Bug reports state
   const [bugReports, setBugReports] = useState([]);
   const [bugLoading, setBugLoading] = useState(false);
+
+  // Quiz permission state
+  const [quizRoleUpdating, setQuizRoleUpdating] = useState({});
 
   // Theme state
   const [isLavender, setIsLavender] = useState(false);
@@ -195,6 +202,15 @@ export default function AdminDashboard() {
   const handleLogout = () => {
     logout();
     navigate('/login');
+  };
+
+  const handleSetQuizRole = async (userId, quizRole) => {
+    setQuizRoleUpdating(s => ({ ...s, [userId]: true }));
+    try {
+      const updated = await quizService.adminSetUserRole(userId, quizRole);
+      setUsers(prev => prev.map(u => u._id === userId ? { ...u, quizRole: updated.quizRole } : u));
+    } catch { alert('Failed to update quiz role'); }
+    finally { setQuizRoleUpdating(s => ({ ...s, [userId]: false })); }
   };
 
   const filteredUsers = users.filter(u => {
@@ -689,6 +705,82 @@ export default function AdminDashboard() {
         {activeTab === 'courses' && (
           <div className="max-w-4xl mx-auto">
             <AdminCourseCreator />
+          </div>
+        )}
+
+        {/* Quiz Manager Tab */}
+        {activeTab === 'quiz' && (
+          <div className="max-w-4xl mx-auto">
+            <AdminQuizManager />
+          </div>
+        )}
+
+        {/* Permissions Tab */}
+        {activeTab === 'permissions' && (
+          <div className="glass-card rounded-2xl overflow-hidden">
+            <div className="p-5 border-b border-slate-100 dark:border-slate-800">
+              <h2 className="font-black text-lg dark:text-white flex items-center gap-2">
+                <ShieldAlert size={20} className="text-purple-500" /> Quiz Permission Manager
+              </h2>
+              <p className="text-slate-400 text-sm mt-1">Assign quiz roles to control what each user can do in the quiz system.</p>
+            </div>
+            <div className="p-4">
+              <div className="mb-4 text-xs text-slate-400">
+                <strong className="text-slate-600 dark:text-slate-300">Role Levels:</strong>
+                {' '}<span className="badge bg-slate-100 dark:bg-slate-800 text-slate-500 mr-1">Normal</span>Can attempt quizzes
+                {' '}<span className="badge bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 mr-1">Question Creator</span>Can add questions
+                {' '}<span className="badge bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 mr-1">Quiz Manager</span>Can start/stop quizzes
+                {' '}<span className="badge bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400">Super Admin</span>Full quiz control
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-100/50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
+                      <th className="p-4 font-bold text-slate-600 dark:text-slate-300 text-sm">User</th>
+                      <th className="p-4 font-bold text-slate-600 dark:text-slate-300 text-sm">Email</th>
+                      <th className="p-4 font-bold text-slate-600 dark:text-slate-300 text-sm">Current Role</th>
+                      <th className="p-4 font-bold text-slate-600 dark:text-slate-300 text-sm">Assign Role</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {users.map(u => (
+                      <tr key={u._id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition">
+                        <td className="p-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+                              {getInitials(u.name)}
+                            </div>
+                            <span className="font-bold text-sm dark:text-white">{u.name}</span>
+                          </div>
+                        </td>
+                        <td className="p-4 text-sm text-slate-400">{u.email}</td>
+                        <td className="p-4">
+                          <span className={`badge text-xs ${
+                            u.quizRole === 'super_admin' ? 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400' :
+                            u.quizRole === 'quiz_manager' ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400' :
+                            u.quizRole === 'question_creator' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' :
+                            'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                          }`}>{u.quizRole || 'normal'}</span>
+                        </td>
+                        <td className="p-4">
+                          <select
+                            value={u.quizRole || 'normal'}
+                            onChange={e => handleSetQuizRole(u._id, e.target.value)}
+                            disabled={quizRoleUpdating[u._id]}
+                            className="px-3 py-1.5 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50"
+                          >
+                            <option value="normal">Normal</option>
+                            <option value="question_creator">Question Creator</option>
+                            <option value="quiz_manager">Quiz Manager</option>
+                            <option value="super_admin">Super Admin</option>
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         )}
 

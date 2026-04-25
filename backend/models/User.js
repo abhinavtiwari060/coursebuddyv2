@@ -21,6 +21,11 @@ const userSchema = new mongoose.Schema({
       canReportBug: true
     }
   },
+  quizRole: { 
+    type: String, 
+    enum: ['normal', 'question_creator', 'quiz_manager', 'super_admin'], 
+    default: 'normal' 
+  },
   createdAt: { type: Date, default: Date.now }
 });
 

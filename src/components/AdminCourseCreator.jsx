@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import {
   Youtube, Search, Loader2, CheckCircle2, Users, BookOpen,
-  ChevronDown, ChevronUp, Clock, X, AlertCircle, Send, Eye
+  ChevronDown, ChevronUp, Clock, X, AlertCircle, Send, Eye, Trash2
 } from 'lucide-react';
 import { adminService } from '../api/api';
+
 
 // ── Helpers ──────────────────────────────────────────
 function formatSecs(s) {
@@ -39,6 +40,7 @@ export default function AdminCourseCreator() {
 
   const [assignedCourses, setAssignedCourses] = useState([]);
   const [loadingHistory, setLoadingHistory]   = useState(false);
+  const [deletingCourse, setDeletingCourse]   = useState({});
 
   // Load existing assigned courses history
   useEffect(() => {
@@ -54,6 +56,7 @@ export default function AdminCourseCreator() {
     } catch { /* silent */ }
     finally { setLoadingHistory(false); }
   };
+
 
   const loadUsers = async () => {
     try {

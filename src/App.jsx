@@ -12,7 +12,10 @@ import AdminDashboard from './pages/AdminDashboard';
 import Profile from './pages/Profile';
 import Leaderboard from './pages/Leaderboard';
 import Thoughts from './pages/Thoughts';
-import TelegramApp from './pages/TelegramApp';
+import VideoPlayer from './pages/VideoPlayer';
+import QuizPage from './pages/QuizPage';
+import QuizResults from './pages/QuizResults';
+import QuizLeaderboard from './pages/QuizLeaderboard';
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
@@ -152,10 +155,34 @@ export default function App() {
             } 
           />
           <Route 
-            path="/telegram-sync" 
+            path="/course/:courseId/video/:videoId" 
             element={
               <ProtectedRoute>
-                <TelegramApp />
+                <VideoPlayer />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/quiz/:id" 
+            element={
+              <ProtectedRoute>
+                <QuizPage />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/quiz/:id/results" 
+            element={
+              <ProtectedRoute>
+                <QuizResults />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/quiz/:id/leaderboard" 
+            element={
+              <ProtectedRoute>
+                <QuizLeaderboard />
               </ProtectedRoute>
             } 
           />

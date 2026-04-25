@@ -1,6 +1,0 @@
-fastapi
-uvicorn
-telethon
-pymongo
-python-dotenv
-motor

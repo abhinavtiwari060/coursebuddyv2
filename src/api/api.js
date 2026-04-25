@@ -153,9 +153,11 @@ export const adminService = {
   updateBugReport: (id, status) => api.put(`/api/admin/bug-reports/${id}`, { status }).then(r => r.data),
   deleteBugReport: (id) => api.delete(`/api/admin/bug-reports/${id}`).then(r => r.data),
   // Course Creator
-  fetchYouTubePlaylist: (url) => api.get("/api/admin/youtube/playlist", { params: { url } }).then(r => r.data),
-  assignCourse: (data) => api.post("/api/admin/courses/assign", data).then(r => r.data),
-  getAssignedCourses: () => api.get("/api/admin/courses/assigned").then(r => r.data),
+  fetchYouTubePlaylist: (url) => api.get('/api/admin/youtube/playlist', { params: { url } }).then(r => r.data),
+  searchYoutubePlaylists: (q) => api.get('/api/admin/youtube/search-playlists', { params: { q } }).then(r => r.data),
+  assignCourse: (data) => api.post('/api/admin/courses/assign', data).then(r => r.data),
+  getAssignedCourses: () => api.get('/api/admin/courses/assigned').then(r => r.data),
+  deleteCourse: (courseId) => api.delete(`/api/admin/course/${courseId}`).then(r => r.data),
 };
 
 // ── Global Settings Service ──────────────
@@ -163,18 +165,32 @@ export const settingsService = {
   getSettings: () => api.get("/api/settings").then((r) => r.data),
 };
 
-// ── Telegram Service ───────────────────────
-export const telegramService = {
-  getStatus: () => api.get("/api/telegram/status").then(r => r.data),
-  getSyncStatus: () => api.get("/api/telegram/sync-status", { params: { _t: Date.now() } }).then(r => r.data),
-  connect: (phone) => api.post("/api/telegram/connect", { phone }).then((r) => r.data),
-  verify: (data) => api.post("/api/telegram/verify", data).then((r) => r.data),
-  getChannels: () => api.get("/api/telegram/channels").then((r) => r.data),
-  syncChannel: (channel_id) => api.post("/api/telegram/sync", { channel_id }).then((r) => r.data),
-  getVideos: (page = 1, limit = 10) => api.get("/api/telegram/videos", { params: { page, limit } }).then((r) => r.data),
-  backfillLinks: () => api.post("/api/telegram/videos/backfill-links").then((r) => r.data),
-  // stream url doesn't need an api call, it just needs the url construction
-  getStreamUrl: (id) => `${API_URL}/api/telegram/videos/stream/${id}`,
+// ── Quiz Service ────────────────────────
+export const quizService = {
+  getActive: () => api.get('/api/quiz/active').then(r => r.data),
+  getQuiz: (id) => api.get(`/api/quiz/${id}`).then(r => r.data),
+  submit: (id, data) => api.post(`/api/quiz/${id}/submit`, data).then(r => r.data),
+  getResults: (id) => api.get(`/api/quiz/${id}/results`).then(r => r.data),
+  getLeaderboard: (id) => api.get(`/api/quiz/${id}/leaderboard`).then(r => r.data),
+  // Admin
+  adminGetAll: () => api.get('/api/admin/quiz/all').then(r => r.data),
+  adminGetOne: (id) => api.get(`/api/admin/quiz/${id}`).then(r => r.data),
+  adminCreate: (data) => api.post('/api/admin/quiz/create', data).then(r => r.data),
+  adminUpdate: (id, data) => api.put(`/api/admin/quiz/${id}`, data).then(r => r.data),
+  adminDelete: (id) => api.delete(`/api/admin/quiz/${id}`).then(r => r.data),
+  adminStart: (id) => api.post(`/api/admin/quiz/${id}/start`).then(r => r.data),
+  adminStop: (id) => api.post(`/api/admin/quiz/${id}/stop`).then(r => r.data),
+  adminGetQuestions: (quizId) => api.get(`/api/admin/quiz/${quizId}/questions`).then(r => r.data),
+  adminAddQuestion: (quizId, data) => api.post(`/api/admin/quiz/${quizId}/questions`, data).then(r => r.data),
+  adminUpdateQuestion: (qId, data) => api.put(`/api/admin/questions/${qId}`, data).then(r => r.data),
+  adminDeleteQuestion: (qId) => api.delete(`/api/admin/questions/${qId}`).then(r => r.data),
+  adminSetUserRole: (userId, quizRole) => api.put(`/api/admin/users/${userId}/quiz-role`, { quizRole }).then(r => r.data),
+};
+
+// ── Progress Service ─────────────────────
+export const progressService = {
+  save: (data) => api.post('/api/progress/save', data).then(r => r.data),
+  get: (courseId) => api.get(`/api/progress/${courseId}`).then(r => r.data),
 };
 
 // Default export
