@@ -22,15 +22,14 @@ function getInitials(name = '') {
 }
 
 const TABS = [
-  { id: 'users', label: 'Users', icon: <Users size={16} /> },
-  { id: 'leaderboard', label: 'Leaderboard', icon: <Trophy size={16} /> },
-  { id: 'courses', label: 'Course Creator', icon: <BookOpen size={16} /> },
-  { id: 'drive', label: 'Drive Fetcher', icon: <HardDrive size={16} /> },
-  { id: 'quiz', label: 'Quiz Manager', icon: <BarChart2 size={16} /> },
-
-  { id: 'permissions', label: 'Permissions', icon: <ShieldAlert size={16} /> },
-  { id: 'bugs', label: 'Bug Reports', icon: <Bug size={16} /> },
-  { id: 'notifications', label: 'Settings & Push', icon: <SettingsIcon size={16} /> },
+  { id: 'users', label: 'Users', icon: <Users size={16} />, color: 'slate' },
+  { id: 'leaderboard', label: 'Leaderboard', icon: <Trophy size={16} />, color: 'amber' },
+  { id: 'courses', label: 'Course Creator', icon: <BookOpen size={16} />, color: 'orange' },
+  { id: 'drive', label: 'Drive Fetcher', icon: <HardDrive size={16} />, color: 'blue' },
+  { id: 'quiz', label: 'Quiz Manager', icon: <BarChart2 size={16} />, color: 'purple' },
+  { id: 'permissions', label: 'Permissions', icon: <ShieldAlert size={16} />, color: 'indigo' },
+  { id: 'bugs', label: 'Bug Reports', icon: <Bug size={16} />, color: 'red' },
+  { id: 'notifications', label: 'Settings', icon: <SettingsIcon size={16} />, color: 'slate' },
 ];
 
 const FEATURE_LABELS = {
@@ -275,22 +274,35 @@ export default function AdminDashboard() {
           ))}
         </div>
 
-        {/* Tab Bar */}
-        <div className="flex gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-1 w-fit">
-          {TABS.map(t => (
-            <button
-              key={t.id}
-              onClick={() => setActiveTab(t.id)}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition ${
-                activeTab === t.id
-                  ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow'
-                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-              }`}
-            >
-              {t.icon} {t.label}
-            </button>
-          ))}
+        <div className="flex flex-wrap gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-1 w-full md:w-fit">
+          {TABS.map(t => {
+            const isActive = activeTab === t.id;
+            const colorClasses = {
+              slate: 'bg-slate-900 dark:bg-white text-white dark:text-slate-900',
+              amber: 'bg-amber-500 text-white shadow-amber-500/20',
+              orange: 'bg-orange-500 text-white shadow-orange-500/20',
+              blue: 'bg-blue-500 text-white shadow-blue-500/20',
+              purple: 'bg-purple-500 text-white shadow-purple-500/20',
+              indigo: 'bg-indigo-500 text-white shadow-indigo-500/20',
+              red: 'bg-red-500 text-white shadow-red-500/20',
+            };
+
+            return (
+              <button
+                key={t.id}
+                onClick={() => setActiveTab(t.id)}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition whitespace-nowrap ${
+                  isActive
+                    ? `${colorClasses[t.color] || colorClasses.slate} shadow-lg`
+                    : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                }`}
+              >
+                {t.icon} {t.label}
+              </button>
+            );
+          })}
         </div>
+
 
         {/* Users Tab */}
         {activeTab === 'users' && (

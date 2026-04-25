@@ -20,8 +20,10 @@ import DataTools from '../components/DataTools';
 import Confetti from 'react-confetti';
 import DriveCourseExplorer from '../components/DriveCourseExplorer';
 import SuggestedPlaylists from '../components/SuggestedPlaylists';
+import LiveQuizBanner from '../components/LiveQuizBanner';
 
-import api, { videoService, courseService, streakService } from '../api/api';
+
+import api, { videoService, courseService, streakService, driveService } from '../api/api';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 
@@ -30,10 +32,12 @@ import { Lightbulb, GripVertical, LayoutDashboard, Video, BarChart2, BookOpen, S
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
   { id: 'videos',    label: 'Videos',    icon: <Video size={18} /> },
+  { id: 'quizzes',   label: 'Live Quizzes', icon: <Trophy size={18} /> },
   { id: 'analytics', label: 'Analytics', icon: <BarChart2 size={18} /> },
   { id: 'courses',   label: 'Courses',   icon: <BookOpen size={18} /> },
   { id: 'settings',  label: 'Settings',  icon: <Settings size={18} /> },
 ];
+
 
 export default function Home() {
   const { user } = useAuth();
@@ -41,7 +45,9 @@ export default function Home() {
 
   const [courses, setCourses] = useState([]);
   const [videos, setVideos] = useState([]);
+  const [driveCourses, setDriveCourses] = useState([]);
   const [videoTab, setVideoTab] = useState('youtube'); // 'youtube' or 'drive'
+
   const [streak, setStreak] = useState({ count: 0, lastDate: null });
   const [goalTarget, setGoalTarget] = useState(3);
   
@@ -56,14 +62,16 @@ export default function Home() {
 
     const loadData = async () => {
       try {
-        const [vids, crs, strk] = await Promise.all([
+        const [vids, crs, strk, driveCrs] = await Promise.all([
           videoService.getAll(),
           courseService.getAll(),
-          streakService.get()
+          streakService.get(),
+          driveService.getCourses().catch(() => [])
         ]);
         // Videos already come sorted by order from backend
         setVideos(vids);
         setCourses(crs.map(c => ({ id: c._id, name: c.name })));
+        setDriveCourses(driveCrs);
         
         if (strk) {
           setStreak({ count: strk.currentStreak, lastDate: strk.lastActiveDate });
@@ -248,9 +256,11 @@ export default function Home() {
       <main className="flex-1 max-w-7xl mx-auto px-4 py-8 w-full">
         {activeTab === 'dashboard' && (
           <>
+            <LiveQuizBanner />
             <SuggestedPlaylists />
-            <Dashboard videos={videos} />
+            <Dashboard videos={videos} driveCourses={driveCourses} />
             <Quotes />
+
             <GoalAnalytics videos={videos} streak={streak.count} goalTarget={goalTarget} onUpdateGoal={setGoalTarget} />
             <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
               <CalendarView videos={videos} />
@@ -348,7 +358,19 @@ export default function Home() {
           </div>
         )}
 
+        {activeTab === 'quizzes' && (
+          <div className="space-y-6">
+            <LiveQuizBanner />
+            <div className="glass-card p-12 rounded-[2.5rem] text-center border-dashed border-2 border-slate-200 dark:border-slate-800">
+               <Trophy size={48} className="mx-auto mb-4 text-slate-300 opacity-50" />
+               <h3 className="text-xl font-bold dark:text-white">Quiz Center</h3>
+               <p className="text-slate-500 mt-2">Active quizzes will appear here. Check back frequently for new challenges!</p>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'analytics' && (
+
           <div className="space-y-6">
             <GoalAnalytics videos={videos} streak={streak.count} goalTarget={goalTarget} onUpdateGoal={setGoalTarget} />
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

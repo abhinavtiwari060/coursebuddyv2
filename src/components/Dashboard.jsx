@@ -1,8 +1,8 @@
 import ProgressBar from './ProgressBar';
 import { formatDuration } from '../utils/helpers';
-import { Clock, PlayCircle, CheckCircle2, TrendingUp, Sparkles } from 'lucide-react';
+import { Clock, PlayCircle, CheckCircle2, TrendingUp, Sparkles, HardDrive } from 'lucide-react';
 
-export default function Dashboard({ videos }) {
+export default function Dashboard({ videos, driveCourses = [] }) {
 
   const total = videos.length;
   const completedVideos = videos.filter(v => v.completed);
@@ -13,7 +13,19 @@ export default function Dashboard({ videos }) {
 
   return (
     <div className="mb-8">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5 mb-8">
+        {/* Drive Courses Card */}
+        <div className="stat-card glass-card p-6 rounded-3xl bg-blue-50/30 dark:bg-blue-900/10 border-blue-100 dark:border-blue-900/30">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center text-blue-500 shadow-inner">
+              <HardDrive size={26} strokeWidth={2.5} />
+            </div>
+            <span className="badge bg-blue-100 dark:bg-blue-800 text-blue-600 dark:text-blue-400">Library</span>
+          </div>
+          <p className="text-4xl font-black dark:text-white tracking-tight">{driveCourses.length}</p>
+          <h3 className="font-semibold text-slate-500 dark:text-slate-400 mt-1">Drive Courses</h3>
+        </div>
+
         {/* Total Videos Stat */}
         <div className="stat-card glass-card p-6 rounded-3xl">
           <div className="flex items-center justify-between mb-4">
