@@ -7,13 +7,15 @@ import {
   Users, Trash2, Clock, PlayCircle, LogOut, ShieldAlert, X, BookOpen,
   CheckCircle2, Trophy, Medal, Crown, BarChart2, Activity, Eye,
   Search, Filter, ChevronDown, TrendingUp, Flame, AlertTriangle, Send, Palette,
-  Bug, ToggleLeft, ToggleRight, Circle, Settings as SettingsIcon
+  Bug, ToggleLeft, ToggleRight, Circle, Settings as SettingsIcon, HardDrive
 } from 'lucide-react';
 import AdminUserLimit from '../components/AdminUserLimit';
 import SuggestedPlaylistsAdmin from '../components/SuggestedPlaylistsAdmin';
 import AdminCourseCreator from '../components/AdminCourseCreator';
 import AdminQuizManager from '../components/AdminQuizManager';
+import AdminDriveManager from '../components/AdminDriveManager';
 import { quizService } from '../api/api';
+
 
 function getInitials(name = '') {
   return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
@@ -23,7 +25,9 @@ const TABS = [
   { id: 'users', label: 'Users', icon: <Users size={16} /> },
   { id: 'leaderboard', label: 'Leaderboard', icon: <Trophy size={16} /> },
   { id: 'courses', label: 'Course Creator', icon: <BookOpen size={16} /> },
+  { id: 'drive', label: 'Drive Fetcher', icon: <HardDrive size={16} /> },
   { id: 'quiz', label: 'Quiz Manager', icon: <BarChart2 size={16} /> },
+
   { id: 'permissions', label: 'Permissions', icon: <ShieldAlert size={16} /> },
   { id: 'bugs', label: 'Bug Reports', icon: <Bug size={16} /> },
   { id: 'notifications', label: 'Settings & Push', icon: <SettingsIcon size={16} /> },
@@ -708,7 +712,15 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* Drive Fetcher Tab */}
+        {activeTab === 'drive' && (
+          <div className="max-w-4xl mx-auto">
+            <AdminDriveManager />
+          </div>
+        )}
+
         {/* Quiz Manager Tab */}
+
         {activeTab === 'quiz' && (
           <div className="max-w-4xl mx-auto">
             <AdminQuizManager />

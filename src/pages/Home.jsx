@@ -18,7 +18,7 @@ import CourseProgress from '../components/CourseProgress';
 import GoalAnalytics from '../components/GoalAnalytics';
 import DataTools from '../components/DataTools';
 import Confetti from 'react-confetti';
-import TelegramVideos from '../components/telegram/TelegramVideos';
+import DriveCourseExplorer from '../components/DriveCourseExplorer';
 import SuggestedPlaylists from '../components/SuggestedPlaylists';
 
 import api, { videoService, courseService, streakService } from '../api/api';
@@ -41,7 +41,7 @@ export default function Home() {
 
   const [courses, setCourses] = useState([]);
   const [videos, setVideos] = useState([]);
-  const [videoTab, setVideoTab] = useState('youtube'); // 'youtube' or 'telegram'
+  const [videoTab, setVideoTab] = useState('youtube'); // 'youtube' or 'drive'
   const [streak, setStreak] = useState({ count: 0, lastDate: null });
   const [goalTarget, setGoalTarget] = useState(3);
   
@@ -270,11 +270,11 @@ export default function Home() {
                 My Videos
               </button>
               <button 
-                onClick={() => setVideoTab('telegram')}
-                className={`py-3 px-4 font-bold border-b-2 transition-all ${videoTab === 'telegram' ? 'border-indigo-500 text-indigo-500' : 'border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2'}`}
+                onClick={() => setVideoTab('drive')}
+                className={`py-3 px-4 font-bold border-b-2 transition-all ${videoTab === 'drive' ? 'border-blue-500 text-blue-500' : 'border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2'}`}
               >
-                <img src="https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg" alt="App" className="w-4 h-4 grayscale opacity-50" />
-                Telegram Library
+                <HardDrive size={16} className={videoTab === 'drive' ? 'text-blue-500' : 'text-slate-400 opacity-50'} />
+                Drive Library
               </button>
             </div>
 
@@ -343,7 +343,7 @@ export default function Home() {
               </div>
             </div>
             ) : (
-              <TelegramVideos />
+              <DriveCourseExplorer />
             )}
           </div>
         )}

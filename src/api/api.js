@@ -193,5 +193,21 @@ export const progressService = {
   get: (courseId) => api.get(`/api/progress/${courseId}`).then(r => r.data),
 };
 
+// ── Google Drive Service ──────────────────
+export const driveService = {
+  // Admin
+  getFolders: () => api.get('/api/admin/drive/folders').then(r => r.data),
+  addFolder: (data) => api.post('/api/admin/drive/add', data).then(r => r.data),
+  syncFolder: (id) => api.post(`/api/admin/drive/sync/${id}`).then(r => r.data),
+  deleteFolder: (id) => api.delete(`/api/admin/drive/${id}`).then(r => r.data),
+  
+  // User
+  getCourses: () => api.get('/api/drive/courses').then(r => r.data),
+  getVideos: (folderId) => api.get(`/api/drive/folders/${folderId}/videos`).then(r => r.data),
+  getVideoMeta: (fileId) => api.get(`/api/drive/video/${fileId}`).then(r => r.data),
+  saveProgress: (data) => api.post('/api/drive/progress', data).then(r => r.data),
+};
+
+
 // Default export
 export default api;

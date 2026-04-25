@@ -25,6 +25,12 @@ import Question from './models/Question.js';
 import QuizAttempt from './models/QuizAttempt.js';
 import UserProgress from './models/UserProgress.js';
 
+// Google Drive Models
+import DriveFolder from './models/DriveFolder.js';
+import DriveVideo from './models/DriveVideo.js';
+import DriveProgress from './models/DriveProgress.js';
+
+
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -1500,7 +1506,184 @@ app.get('/api/quiz/:id/leaderboard', authMiddleware, async (req, res) => {
   }
 });
 
+// ── Google Drive Integration ─────────────────────
+import { extractDriveFolderId, syncDriveFolder } from './driveSync.js';
+
+// Admin: Add Drive Folder
+app.post('/api/admin/drive/add', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { url, name, description } = req.body;
+    const folderId = extractDriveFolderId(url);
+    if (!folderId) return res.status(400).json({ error: 'Invalid Google Drive Folder URL' });
+
+    let folder = await DriveFolder.findOne({ folderId });
+    if (folder) return res.status(400).json({ error: 'This folder is already registered.' });
+
+    folder = new DriveFolder({
+      folderId,
+      folderName: name || 'Unnamed Course',
+      description,
+      folderUrl: url,
+      addedBy: req.user.id
+    });
+
+    await folder.save();
+    
+    // Background sync
+    syncDriveFolder(folder._id).catch(e => console.error("Auto-sync error:", e));
+
+    res.json({ message: 'Drive folder added. Sync started in background.', folder });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: Sync Drive Folder
+app.post('/api/admin/drive/sync/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const folder = await DriveFolder.findById(req.params.id);
+    if (!folder) return res.status(404).json({ error: 'Folder not found' });
+
+    if (folder.syncStatus === 'syncing') return res.status(400).json({ error: 'Sync already in progress' });
+
+    // Background sync
+    syncDriveFolder(folder._id).catch(e => console.error("Manual sync error:", e));
+    
+    res.json({ message: 'Sync started' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: List Drive Folders
+app.get('/api/admin/drive/folders', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const folders = await DriveFolder.find().sort({ createdAt: -1 });
+    res.json(folders);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: Delete Drive Folder
+app.delete('/api/admin/drive/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const folder = await DriveFolder.findById(req.params.id);
+    if (!folder) return res.status(404).json({ error: 'Folder not found' });
+
+    await DriveVideo.deleteMany({ driveFolderId: folder.folderId });
+    await DriveFolder.findByIdAndDelete(req.params.id);
+    
+    res.json({ message: 'Folder and associated videos removed' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// User: Stream Video (Secure Proxy)
+app.get('/api/drive/stream/:fileId', authMiddleware, async (req, res) => {
+  try {
+    const apiKey = process.env.GOOGLE_DRIVE_API_KEY;
+    const fileId = req.params.fileId;
+    
+    const response = await axios({
+      method: 'get',
+      url: `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${apiKey}`,
+      responseType: 'stream',
+      headers: {
+        Range: req.headers.range // Support video seeking/partial content
+      }
+    });
+
+    // Pass through headers
+    res.set(response.headers);
+    response.data.pipe(res);
+  } catch (err) {
+    res.status(500).json({ error: 'Streaming failed' });
+  }
+});
+
+// User: Get Structured Course List
+
+app.get('/api/drive/courses', authMiddleware, async (req, res) => {
+  try {
+    const folders = await DriveFolder.find().select('folderId folderName description totalVideos lastSynced');
+    
+    // For each folder, we could provide some sample hierarchy if needed, 
+    // but the frontend will likely fetch per-folder or we send a flat video list to reconstruct.
+    // For performance, we send the root folders first.
+    res.json(folders);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// User: Get Videos for a Folder (Hierarchy included)
+app.get('/api/drive/folders/:folderId/videos', authMiddleware, async (req, res) => {
+  try {
+    const videos = await DriveVideo.find({ driveFolderId: req.params.folderId })
+      .sort({ driveOrder: 1 });
+    
+    // Fetch progress for these videos
+    const fileIds = videos.map(v => v.fileId);
+    const progressDocs = await DriveProgress.find({ userId: req.user.id, fileId: { $in: fileIds } });
+    
+    const progressMap = {};
+    progressDocs.forEach(p => { progressMap[p.fileId] = p; });
+
+    const results = videos.map(v => ({
+      ...v.toObject(),
+      progress: progressMap[v.fileId] || null
+    }));
+
+    res.json(results);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// User: Get Video Metadata
+app.get('/api/drive/video/:fileId', authMiddleware, async (req, res) => {
+  try {
+    const video = await DriveVideo.findOne({ fileId: req.params.fileId });
+    if (!video) return res.status(404).json({ error: 'Video not found' });
+
+    const progress = await DriveProgress.findOne({ userId: req.user.id, fileId: req.params.fileId });
+    
+    res.json({ video, progress });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// User: Save Progress
+app.post('/api/drive/progress', authMiddleware, async (req, res) => {
+  try {
+    const { fileId, driveFolderId, watchPosition, completed } = req.body;
+    
+    const update = {
+      watchPosition,
+      lastWatched: new Date()
+    };
+    if (completed) {
+      update.completed = true;
+      update.completedAt = new Date();
+    }
+
+    const progress = await DriveProgress.findOneAndUpdate(
+      { userId: req.user.id, fileId },
+      { $set: update, $setOnInsert: { driveFolderId } },
+      { upsert: true, new: true }
+    );
+
+    res.json(progress);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── START SERVER ─────────────────────
+
 const PORT = process.env.PORT || 5000;
 
 mongoose.connect(process.env.MONGO_URI, { family: 4 })

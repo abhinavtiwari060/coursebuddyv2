@@ -16,6 +16,8 @@ import VideoPlayer from './pages/VideoPlayer';
 import QuizPage from './pages/QuizPage';
 import QuizResults from './pages/QuizResults';
 import QuizLeaderboard from './pages/QuizLeaderboard';
+import DrivePlayer from './pages/DrivePlayer';
+
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
@@ -162,6 +164,15 @@ export default function App() {
               </ProtectedRoute>
             } 
           />
+          <Route 
+            path="/drive/video/:fileId" 
+            element={
+              <ProtectedRoute>
+                <DrivePlayer />
+              </ProtectedRoute>
+            } 
+          />
+
           <Route 
             path="/quiz/:id" 
             element={
