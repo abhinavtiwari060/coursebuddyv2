@@ -1,6 +1,6 @@
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { ShieldCheck, Lock, Eye, FileText, Globe, Mail } from 'lucide-react';
+import { ShieldCheck, Lock, Eye, FileText, Globe, Mail, CheckCircle2 } from 'lucide-react';
 
 export default function PrivacyPolicy() {
   return (
