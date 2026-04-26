@@ -141,6 +141,15 @@ export const notificationService = {
   markRead: (id) => api.put(`/api/notifications/${id}/read`).then((r) => r.data),
 };
 
+// ── Playlist Service ─────────────────────
+export const playlistService = {
+  adminGetAll: () => api.get("/api/admin/playlists").then((r) => r.data),
+  importPlaylist: (data) => api.post("/api/admin/playlists/import", data).then((r) => r.data),
+  refreshPlaylist: (id) => api.post(`/api/admin/playlists/${id}/refresh`).then((r) => r.data),
+  deletePlaylist: (id) => api.delete(`/api/admin/playlists/${id}`).then((r) => r.data),
+  assignUsers: (id, userIds) => api.post(`/api/admin/playlists/${id}/assign`, { userIds }).then((r) => r.data),
+};
+
 // ── Admin Service ────────────────────────
 export const adminService = {
   getUsers: () => api.get("/api/admin/users").then((r) => r.data),

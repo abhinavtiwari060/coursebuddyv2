@@ -26,6 +26,7 @@ import QuizAttempt from './models/QuizAttempt.js';
 import UserProgress from './models/UserProgress.js';
 import QuizAssignment from './models/QuizAssignment.js';
 import DeleteRequest from './models/DeleteRequest.js';
+import Playlist from './models/Playlist.js';
 
 
 
@@ -1437,6 +1438,186 @@ app.post('/api/videos/:id/check-completion', authMiddleware, async (req, res) =>
   }
 });
 
+
+// Helper to parse YouTube ISO 8601 duration (e.g. PT1H2M10S) to total seconds
+function parseISO8601Duration(duration) {
+  const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!match) return 0;
+  const hours = parseInt(match[1]) || 0;
+  const minutes = parseInt(match[2]) || 0;
+  const seconds = parseInt(match[3]) || 0;
+  return (hours * 3600) + (minutes * 60) + seconds;
+}
+
+// ── Admin Playlist Management ─────────────────────
+
+/** GET /api/admin/playlists — list all imported playlists */
+app.get('/api/admin/playlists', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const playlists = await Playlist.find().sort({ createdAt: -1 });
+    res.json(playlists);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** POST /api/admin/playlists/import — import a playlist and its videos */
+app.post('/api/admin/playlists/import', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { playlistUrl, courseName } = req.body;
+    if (!playlistUrl || !courseName) return res.status(400).json({ error: 'URL and Course Name are required' });
+
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: 'YOUTUBE_API_KEY missing' });
+
+    // Extract ID
+    let playlistId = playlistUrl;
+    if (playlistUrl.includes('list=')) {
+      playlistId = new URL(playlistUrl).searchParams.get('list');
+    }
+    if (!playlistId) return res.status(400).json({ error: 'Invalid playlist URL' });
+
+    // 1. Fetch Playlist Info
+    const plRes = await axios.get('https://www.googleapis.com/youtube/v3/playlists', {
+      params: { part: 'snippet,contentDetails', id: playlistId, key: apiKey }
+    });
+    const plData = plRes.data.items?.[0];
+    if (!plData) return res.status(404).json({ error: 'Playlist not found on YouTube' });
+
+    // 2. Fetch All Videos (handling pagination if possible, but let's do 50 for now)
+    const itemsRes = await axios.get('https://www.googleapis.com/youtube/v3/playlistItems', {
+      params: { part: 'snippet,contentDetails', maxResults: 50, playlistId, key: apiKey }
+    });
+    const items = itemsRes.data.items || [];
+    const videoIds = items.map(i => i.contentDetails.videoId);
+
+    // 3. Fetch Video Durations
+    let durationMap = {};
+    if (videoIds.length > 0) {
+      const vidRes = await axios.get('https://www.googleapis.com/youtube/v3/videos', {
+        params: { part: 'contentDetails', id: videoIds.join(','), key: apiKey }
+      });
+      for (const v of vidRes.data.items || []) {
+        durationMap[v.id] = parseISO8601Duration(v.contentDetails.duration);
+      }
+    }
+
+    const videos = items.map((item, idx) => ({
+      videoId: item.contentDetails.videoId,
+      title: item.snippet.title,
+      description: item.snippet.description,
+      thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
+      duration: durationMap[item.contentDetails.videoId] || 0,
+      position: idx,
+      channelTitle: item.snippet.videoOwnerChannelTitle,
+      publishedAt: item.snippet.publishedAt,
+    }));
+
+    // Find or create course
+    let course = await Course.findOne({ name: courseName });
+    if (!course) {
+      course = await Course.create({ name: courseName, userId: req.user.id });
+    }
+
+    // Create or Update Playlist doc
+    const playlist = await Playlist.findOneAndUpdate(
+      { playlistId },
+      {
+        courseId: course._id,
+        courseName: course.name,
+        playlistUrl: `https://www.youtube.com/playlist?list=${playlistId}`,
+        title: plData.snippet.title,
+        description: plData.snippet.description,
+        thumbnail: plData.snippet.thumbnails?.medium?.url,
+        channelTitle: plData.snippet.channelTitle,
+        videoCount: plData.contentDetails.itemCount,
+        totalDuration: Object.values(durationMap).reduce((a, b) => a + b, 0),
+        videos,
+        lastFetchedAt: new Date(),
+        createdBy: req.user.id,
+      },
+      { upsert: true, new: true }
+    );
+
+    res.json({ message: 'Playlist imported successfully', playlist });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** POST /api/admin/playlists/:id/refresh — refresh videos from YouTube */
+app.post('/api/admin/playlists/:id/refresh', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const playlist = await Playlist.findOne({ playlistId: req.params.id });
+    if (!playlist) return res.status(404).json({ error: 'Playlist not found' });
+
+    // Reuse the logic from import but simpler... 
+    // Actually better to just reuse the import logic by triggering it or calling a shared function.
+    // For now, let's keep it simple and just do it here.
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    const itemsRes = await axios.get('https://www.googleapis.com/youtube/v3/playlistItems', {
+      params: { part: 'snippet,contentDetails', maxResults: 50, playlistId: playlist.playlistId, key: apiKey }
+    });
+    const items = itemsRes.data.items || [];
+    const videoIds = items.map(i => i.contentDetails.videoId);
+
+    let durationMap = {};
+    if (videoIds.length > 0) {
+      const vidRes = await axios.get('https://www.googleapis.com/youtube/v3/videos', {
+        params: { part: 'contentDetails', id: videoIds.join(','), key: apiKey }
+      });
+      for (const v of vidRes.data.items || []) {
+        durationMap[v.id] = parseISO8601Duration(v.contentDetails.duration);
+      }
+    }
+
+    const videos = items.map((item, idx) => ({
+      videoId: item.contentDetails.videoId,
+      title: item.snippet.title,
+      description: item.snippet.description,
+      thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
+      duration: durationMap[item.contentDetails.videoId] || 0,
+      position: idx,
+      channelTitle: item.snippet.videoOwnerChannelTitle,
+      publishedAt: item.snippet.publishedAt,
+    }));
+
+    playlist.videos = videos;
+    playlist.lastFetchedAt = new Date();
+    playlist.totalDuration = Object.values(durationMap).reduce((a, b) => a + b, 0);
+    await playlist.save();
+
+    res.json({ message: 'Playlist refreshed', playlist });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** DELETE /api/admin/playlists/:id — delete playlist */
+app.delete('/api/admin/playlists/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    await Playlist.findOneAndDelete({ playlistId: req.params.id });
+    res.json({ message: 'Playlist deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** POST /api/admin/playlists/:id/assign — assign to users */
+app.post('/api/admin/playlists/:id/assign', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { userIds } = req.body;
+    const playlist = await Playlist.findOneAndUpdate(
+      { playlistId: req.params.id },
+      { $set: { assignedTo: userIds } },
+      { new: true }
+    );
+    if (!playlist) return res.status(404).json({ error: 'Playlist not found' });
+    res.json(playlist);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ── YouTube Playlist Search ─────────────────────
 
