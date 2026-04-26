@@ -9,12 +9,12 @@ export default function PrivacyPolicy() {
       <main className="flex-1 max-w-4xl mx-auto px-6 py-16 w-full">
         <div className="glass-card p-8 md:p-12 rounded-[2.5rem] border border-orange-200 dark:border-slate-800 shadow-2xl shadow-orange-500/5 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/5 blur-3xl rounded-full" />
-          
+
           <div className="relative">
             <div className="w-16 h-16 bg-orange-100 dark:bg-orange-900/30 text-orange-600 rounded-2xl flex items-center justify-center mb-8">
               <ShieldCheck size={32} />
             </div>
-            
+
             <h1 className="text-4xl font-black dark:text-white mb-2">Privacy Policy</h1>
             <p className="text-slate-500 font-bold mb-12 uppercase tracking-widest text-sm">Last Updated: October 2023</p>
 
@@ -78,7 +78,7 @@ export default function PrivacyPolicy() {
                 </div>
                 <p className="font-medium opacity-90 mb-6">If you have any questions about this Privacy Policy, please contact our support team at:</p>
                 <div className="bg-white/10 p-4 rounded-2xl flex items-center gap-3 font-bold border border-white/20">
-                   support@studymate.app
+                  abhitiwariaj@gmail.com
                 </div>
               </div>
             </div>

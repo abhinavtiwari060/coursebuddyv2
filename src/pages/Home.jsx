@@ -26,7 +26,7 @@ import api, { videoService, courseService, streakService } from '../api/api';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 
-import { Lightbulb, GripVertical, LayoutDashboard, Video, BarChart2, BookOpen, Settings, Trophy, ShieldAlert, ArrowLeft, PlayCircle, User } from 'lucide-react';
+import { Lightbulb, GripVertical, LayoutDashboard, Video, BarChart2, BookOpen, Settings, Trophy, ShieldAlert, ArrowLeft, PlayCircle, User, Trash2 } from 'lucide-react';
 
 const TABS = [
   { id: 'dashboard', label: 'Study Table', icon: <LayoutDashboard size={18} /> },
@@ -180,6 +180,18 @@ export default function Home() {
       setVideos(prev => prev.filter(v => (v._id !== dbId && v.id !== dbId)));
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleDeleteCourse = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this course? All videos will be hidden and a delete request will be sent to admin.')) return;
+    try {
+      await courseService.delete(id);
+      setCourses(prev => prev.filter(c => c.id !== id));
+      setVideos(prev => prev.filter(v => v.course !== courses.find(c => c.id === id)?.name));
+    } catch (err) {
+      console.error(err);
+      alert('Failed to delete course');
     }
   };
 
@@ -372,8 +384,15 @@ export default function Home() {
                         <div 
                           key={course.id} 
                           onClick={() => setSelectedCourse({ type: 'youtube', data: course })}
-                          className="glass-card p-6 rounded-[2rem] hover:shadow-xl transition-all cursor-pointer group hover:-translate-y-1"
+                          className="glass-card p-6 rounded-[2rem] hover:shadow-xl transition-all cursor-pointer group hover:-translate-y-1 relative"
                         >
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDeleteCourse(course.id); }}
+                            className="absolute top-4 right-4 p-2 bg-red-100 dark:bg-red-900/30 text-red-500 rounded-xl opacity-0 group-hover:opacity-100 transition shadow-sm hover:bg-red-500 hover:text-white"
+                            title="Delete Course"
+                          >
+                            <Trash2 size={16} />
+                          </button>
                           <div className="w-14 h-14 bg-red-100 dark:bg-red-900/30 rounded-2xl flex items-center justify-center text-red-500 mb-5 group-hover:scale-110 transition shadow-inner">
                             <BookOpen size={28} />
                           </div>
@@ -537,10 +556,15 @@ export default function Home() {
         {activeTab === 'courses' && (
            <div className="space-y-6">
              <CourseProgress courses={courses} videos={videos} />
-             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-               <AddCourseForm onAddCourse={handleAddCourse} />
-               <AddVideoForm courses={courses} onAddVideo={handleAddVideo} />
-             </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="space-y-6">
+                  <AddCourseForm onAddCourse={handleAddCourse} />
+                  <AddVideoForm courses={courses} onAddVideo={handleAddVideo} />
+                </div>
+                <div className="space-y-6">
+                  <PlaylistImport courses={courses} onAddVideo={handleAddVideo} />
+                </div>
+              </div>
            </div>
         )}
 

@@ -12,6 +12,7 @@ import {
 import AdminUserLimit from '../components/AdminUserLimit';
 import SuggestedPlaylistsAdmin from '../components/SuggestedPlaylistsAdmin';
 import AdminCourseCreator from '../components/AdminCourseCreator';
+import AdminPlaylistManager from '../components/AdminPlaylistManager';
 import AdminQuizManager from '../components/AdminQuizManager';
 import AdminAIQuiz from '../components/AdminAIQuiz';
 import AdminDeleteRequests from '../components/AdminDeleteRequests';
@@ -26,6 +27,7 @@ const TABS = [
   { id: 'users',         label: 'Users',          icon: <Users size={16} />,       color: 'slate'  },
   { id: 'leaderboard',   label: 'Leaderboard',    icon: <Trophy size={16} />,      color: 'amber'  },
   { id: 'courses',       label: 'Course Creator', icon: <BookOpen size={16} />,    color: 'orange' },
+  { id: 'playlists',     label: 'Playlist Mgr',   icon: <PlayCircle size={16} />, color: 'emerald' },
   { id: 'quiz',          label: 'Quiz Manager',   icon: <BarChart2 size={16} />,   color: 'purple' },
   { id: 'ai_quiz',       label: 'AI Quiz',        icon: <Sparkles size={16} />,    color: 'violet' },
   { id: 'permissions',   label: 'Permissions',    icon: <ShieldAlert size={16} />, color: 'indigo' },
@@ -793,6 +795,13 @@ export default function AdminDashboard() {
         {activeTab === 'courses' && (
           <div className="max-w-4xl mx-auto">
             <AdminCourseCreator />
+          </div>
+        )}
+
+        {/* Playlist Manager Tab */}
+        {activeTab === 'playlists' && (
+          <div className="max-w-5xl mx-auto">
+            <AdminPlaylistManager />
           </div>
         )}
 
