@@ -106,19 +106,25 @@ export default function Login() {
               }
             }}
             disabled={loading}
-            className="w-full bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 py-3 rounded-xl border border-slate-200 dark:border-slate-700 font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition shadow-sm flex items-center justify-center gap-3"
+            className="w-full bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition shadow-sm flex items-center justify-center gap-3 hover:-translate-y-0.5"
           >
-            <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-5 h-5" alt="G" />
-            Sign in with Google
+            {loading ? <Loader2 className="animate-spin text-orange-500" size={20} /> : (
+              <>
+                <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-5 h-5 drop-shadow-sm" alt="G" />
+                <span>Continue with Google</span>
+              </>
+            )}
           </button>
         </form>
 
-        <p className="mt-8 text-center text-sm font-medium text-slate-500 dark:text-slate-400">
-          Don't have an account?{' '}
-          <Link to="/signup" className="text-orange-500 hover:text-orange-600 font-bold transition-colors">
-            Create one
+        <div className="mt-8 text-center bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
+          <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+            Don't have an account?
+          </p>
+          <Link to="/signup" className="text-orange-500 hover:text-orange-600 font-black tracking-wide uppercase transition-colors inline-block mt-1">
+            Create Account
           </Link>
-        </p>
+        </div>
       </div>
     </div>
   );

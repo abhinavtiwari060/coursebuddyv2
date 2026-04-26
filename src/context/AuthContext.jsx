@@ -11,13 +11,34 @@ export const AuthProvider = ({ children }) => {
 
   // Initialize Auth
   useEffect(() => {
-    const token = localStorage.getItem('studymate_token');
-    const userData = localStorage.getItem('studymate_user');
-    
-    if (token && userData) {
-      setUser(JSON.parse(userData));
-    }
-    setLoading(false);
+    const initAuth = async () => {
+      const token = localStorage.getItem('studymate_token');
+      
+      if (token) {
+        try {
+          const data = await authService.me();
+          if (data && data.user) {
+            localStorage.setItem('studymate_user', JSON.stringify(data.user));
+            setUser(data.user);
+          } else {
+            // Invalid token
+            localStorage.removeItem('studymate_token');
+            localStorage.removeItem('studymate_user');
+          }
+        } catch (err) {
+          console.error("Auth init failed:", err);
+          // Don't auto-logout on network error, fallback to localStorage if available
+          const userData = localStorage.getItem('studymate_user');
+          if (userData) {
+            setUser(JSON.parse(userData));
+          } else {
+            localStorage.removeItem('studymate_token');
+          }
+        }
+      }
+      setLoading(false);
+    };
+    initAuth();
   }, []);
 
   // Request & register FCM token automatically whenever a user is logged in

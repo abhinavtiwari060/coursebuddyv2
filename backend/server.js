@@ -25,6 +25,7 @@ import Question from './models/Question.js';
 import QuizAttempt from './models/QuizAttempt.js';
 import UserProgress from './models/UserProgress.js';
 import QuizAssignment from './models/QuizAssignment.js';
+import DeleteRequest from './models/DeleteRequest.js';
 
 
 
@@ -217,6 +218,28 @@ app.post('/api/auth/google', async (req, res) => {
   }
 });
 
+app.get('/api/auth/me', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('-password');
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.status === 'blocked') return res.status(403).json({ error: 'Account blocked' });
+    
+    res.json({
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        avatar: user.avatar,
+        features: user.features,
+        isOnline: user.isOnline
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 // ── Global Settings ─────────────────
 app.get('/api/settings', async (req, res) => {
   try {
@@ -264,6 +287,7 @@ app.get('/api/profile', authMiddleware, async (req, res) => {
 
     const completedVideos = videos.filter(v => v.completed);
     const totalWatchTime = completedVideos.reduce((acc, v) => acc + (v.duration || 0), 0);
+    const completedCourses = courses.filter(c => c.isCompleted);
 
     res.json({
       user,
@@ -271,10 +295,17 @@ app.get('/api/profile', authMiddleware, async (req, res) => {
         totalVideos: videos.length,
         completedVideos: completedVideos.length,
         totalCourses: courses.length,
+        completedCoursesCount: completedCourses.length,
         totalWatchTime,
         currentStreak: streak?.currentStreak || 0,
         lastActiveDate: streak?.lastActiveDate || null,
+        completionRate: videos.length > 0 ? Math.round((completedVideos.length / videos.length) * 100) : 0,
       },
+      completedCourses: completedCourses.map(c => ({
+        _id: c._id,
+        name: c.name,
+        completedAt: c.completedAt
+      })),
       recentActivity: completedVideos
         .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt))
         .slice(0, 10)
@@ -306,7 +337,7 @@ app.put('/api/profile', authMiddleware, async (req, res) => {
 
 // ── Course Routes ─────────────────────
 app.get('/api/courses', authMiddleware, async (req, res) => {
-  const courses = await Course.find({ userId: req.user.id });
+  const courses = await Course.find({ userId: req.user.id, isPendingDelete: { $ne: true } });
   res.json(courses);
 });
 
@@ -325,8 +356,22 @@ app.post('/api/courses', authMiddleware, async (req, res) => {
 
 app.delete('/api/courses/:id', authMiddleware, async (req, res) => {
   try {
-    await Course.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
-    res.json({ message: 'Course deleted' });
+    const course = await Course.findOne({ _id: req.params.id, userId: req.user.id });
+    if (!course) return res.status(404).json({ error: 'Course not found' });
+
+    // Soft-delete: hide from user immediately, queue for admin approval
+    await Course.updateOne({ _id: course._id }, { $set: { isPendingDelete: true } });
+
+    const user = await User.findById(req.user.id).select('name');
+    await DeleteRequest.create({
+      userId: req.user.id,
+      userName: user?.name || 'Unknown',
+      itemId: String(course._id),
+      itemType: 'course',
+      itemName: course.name,
+    });
+
+    res.json({ message: 'Delete request submitted. Awaiting admin approval.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -334,7 +379,8 @@ app.delete('/api/courses/:id', authMiddleware, async (req, res) => {
 
 // ── Video Routes ─────────────────────
 app.get('/api/videos', authMiddleware, async (req, res) => {
-  const videos = await Video.find({ userId: req.user.id }).sort({ order: 1, createdAt: 1 });
+  // Exclude soft-deleted videos from user view
+  const videos = await Video.find({ userId: req.user.id, isPendingDelete: { $ne: true } }).sort({ order: 1, createdAt: 1 });
   res.json(videos);
 });
 
@@ -427,8 +473,22 @@ app.put('/api/videos/:id', authMiddleware, async (req, res) => {
 
 app.delete('/api/videos/:id', authMiddleware, async (req, res) => {
   try {
-    await Video.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
-    res.json({ message: 'Video deleted' });
+    const video = await Video.findOne({ _id: req.params.id, userId: req.user.id });
+    if (!video) return res.status(404).json({ error: 'Video not found' });
+
+    // Soft-delete: hide from user immediately, queue for admin approval
+    await Video.updateOne({ _id: video._id }, { $set: { isPendingDelete: true } });
+
+    const user = await User.findById(req.user.id).select('name');
+    await DeleteRequest.create({
+      userId: req.user.id,
+      userName: user?.name || 'Unknown',
+      itemId: String(video._id),
+      itemType: 'video',
+      itemName: video.title,
+    });
+
+    res.json({ message: 'Delete request submitted. Awaiting admin approval.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -598,7 +658,7 @@ app.post('/api/bug-report', authMiddleware, async (req, res) => {
 // ── Thoughts of the Day (Replaced Community) ─────────────────────
 app.get('/api/thoughts', authMiddleware, async (req, res) => {
   try {
-    const thoughts = await Thought.find().sort({ createdAt: -1 }).limit(50);
+    const thoughts = await Thought.find({ isPendingDelete: { $ne: true } }).sort({ createdAt: -1 }).limit(50);
     res.json(thoughts);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -608,14 +668,27 @@ app.get('/api/thoughts', authMiddleware, async (req, res) => {
 app.post('/api/thoughts', authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-    const existingCount = await Thought.countDocuments({ user_id: req.user.id });
-    if (existingCount >= 1) return res.status(403).json({ error: 'You have already posted a thought. Please edit or delete it first.' });
+    
+    // Check if posted within last 24 hours
+    const yesterday = new Date();
+    yesterday.setHours(yesterday.getHours() - 24);
+    
+    const recentThought = await Thought.findOne({ 
+      user_id: req.user.id,
+      createdAt: { $gt: yesterday }
+    });
+    
+    if (recentThought) return res.status(403).json({ error: 'You can only post 1 thought per 24 hours.' });
+
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 24);
 
     const thought = new Thought({
       user_id: req.user.id,
       username: user.name,
       avatar: user.avatar,
-      content: req.body.content
+      content: req.body.content,
+      expiresAt
     });
     await thought.save();
     res.json(thought);
@@ -640,9 +713,22 @@ app.put('/api/thoughts/:id', authMiddleware, async (req, res) => {
 
 app.delete('/api/thoughts/:id', authMiddleware, async (req, res) => {
   try {
-    const doc = await Thought.findOneAndDelete({ _id: req.params.id, user_id: req.user.id });
-    if (!doc) return res.status(403).json({ error: 'Not authorized or thought not found' });
-    res.json({ success: true });
+    const thought = await Thought.findOne({ _id: req.params.id, user_id: req.user.id });
+    if (!thought) return res.status(403).json({ error: 'Not authorized or thought not found' });
+
+    // Soft delete
+    await Thought.updateOne({ _id: thought._id }, { $set: { isPendingDelete: true } });
+
+    const user = await User.findById(req.user.id).select('name');
+    await DeleteRequest.create({
+      userId: req.user.id,
+      userName: user?.name || 'Unknown',
+      itemId: String(thought._id),
+      itemType: 'thought',
+      itemName: 'Thought ending in: ' + thought.content.slice(-20),
+    });
+
+    res.json({ message: 'Delete request submitted. Awaiting admin approval.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1219,6 +1305,138 @@ app.delete('/api/admin/course/:courseId', authMiddleware, adminMiddleware, async
     res.status(500).json({ error: err.message });
   }
 });
+
+/**
+ * DELETE /api/admin/courses/by-name/:name
+ * Soft-delete all courses and videos matching the name across ALL users.
+ */
+app.delete('/api/admin/courses/by-name/:name', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { name } = req.params;
+    
+    // Soft delete courses
+    const courseRes = await Course.updateMany(
+      { name: name },
+      { $set: { isPendingDelete: true } }
+    );
+    
+    // Soft delete videos
+    const videoRes = await Video.updateMany(
+      { course: name },
+      { $set: { isPendingDelete: true } }
+    );
+
+    res.json({ 
+      message: `Course "${name}" soft-deleted for all users.`,
+      coursesAffected: courseRes.modifiedCount,
+      videosAffected: videoRes.modifiedCount
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Admin Delete Requests ─────────────────────
+
+/** GET /api/admin/delete-requests — list all pending delete requests */
+app.get('/api/admin/delete-requests', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const requests = await DeleteRequest.find({ status: 'pending' }).sort({ requestedAt: -1 }).limit(100);
+    res.json(requests);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** POST /api/admin/delete-requests/:id/approve — permanently delete the item */
+app.post('/api/admin/delete-requests/:id/approve', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const request = await DeleteRequest.findById(req.params.id);
+    if (!request) return res.status(404).json({ error: 'Request not found' });
+
+    if (request.itemType === 'video') {
+      await Video.findByIdAndDelete(request.itemId);
+    } else if (request.itemType === 'course') {
+      const course = await Course.findById(request.itemId);
+      if (course) {
+        await Video.deleteMany({ userId: course.userId, course: course.name });
+        await Course.findByIdAndDelete(request.itemId);
+      }
+    } else if (request.itemType === 'thought') {
+      const Thought = (await import('./models/Thought.js')).default;
+      await Thought.findByIdAndDelete(request.itemId);
+    }
+
+    request.status = 'approved';
+    request.resolvedAt = new Date();
+    await request.save();
+
+    // Notify user
+    await Notification.create({
+      userId: request.userId,
+      title: '✅ Delete Approved',
+      body: `Your delete request for "${request.itemName}" has been approved.`,
+      icon: 'success',
+    });
+
+    res.json({ message: 'Delete approved and item removed.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** POST /api/admin/delete-requests/:id/reject — restore visibility */
+app.post('/api/admin/delete-requests/:id/reject', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const request = await DeleteRequest.findById(req.params.id);
+    if (!request) return res.status(404).json({ error: 'Request not found' });
+
+    if (request.itemType === 'video') {
+      await Video.updateOne({ _id: request.itemId }, { $set: { isPendingDelete: false } });
+    } else if (request.itemType === 'course') {
+      await Course.updateOne({ _id: request.itemId }, { $set: { isPendingDelete: false } });
+    }
+
+    request.status = 'rejected';
+    request.resolvedAt = new Date();
+    await request.save();
+
+    // Notify user
+    await Notification.create({
+      userId: request.userId,
+      title: '❌ Delete Rejected',
+      body: `Your delete request for "${request.itemName}" was rejected. The item has been restored.`,
+      icon: 'warning',
+    });
+
+    res.json({ message: 'Delete request rejected. Item restored.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** POST /api/videos/:id/check-completion — auto-mark course complete when all videos done */
+app.post('/api/videos/:id/check-completion', authMiddleware, async (req, res) => {
+  try {
+    const video = await Video.findOne({ _id: req.params.id, userId: req.user.id });
+    if (!video) return res.status(404).json({ error: 'Video not found' });
+
+    const allVideos = await Video.find({ userId: req.user.id, course: video.course, isPendingDelete: { $ne: true } });
+    const allDone = allVideos.length > 0 && allVideos.every(v => v.completed);
+
+    if (allDone) {
+      await Course.updateOne(
+        { userId: req.user.id, name: video.course },
+        { $set: { isCompleted: true, completedAt: new Date() } }
+      );
+      return res.json({ courseCompleted: true, courseName: video.course });
+    }
+    res.json({ courseCompleted: false });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // ── YouTube Playlist Search ─────────────────────
 

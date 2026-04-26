@@ -46,6 +46,8 @@ export const authService = {
 
   googleLogin: (name, email, avatar) => 
     api.post("/api/auth/google", { name, email, avatar }).then((r) => r.data),
+
+  me: () => api.get("/api/auth/me").then((r) => r.data),
 };
 
 // ── Profile Service ──────────────────────
@@ -76,6 +78,9 @@ export const videoService = {
         completedAt: new Date().toISOString(),
       })
       .then((r) => r.data),
+
+  checkCompletion: (id) =>
+    api.post(`/api/videos/${id}/check-completion`).then((r) => r.data),
 
   markPending: (id) =>
     api
@@ -161,6 +166,10 @@ export const adminService = {
   assignCourse: (data) => api.post('/api/admin/courses/assign', data).then(r => r.data),
   getAssignedCourses: () => api.get('/api/admin/courses/assigned').then(r => r.data),
   deleteCourse: (courseId) => api.delete(`/api/admin/course/${courseId}`).then(r => r.data),
+  deleteCourseByName: (name) => api.delete(`/api/admin/courses/by-name/${encodeURIComponent(name)}`).then(r => r.data),
+  getDeleteRequests: () => api.get('/api/admin/delete-requests').then(r => r.data),
+  approveDeleteRequest: (id) => api.post(`/api/admin/delete-requests/${id}/approve`).then(r => r.data),
+  rejectDeleteRequest: (id) => api.post(`/api/admin/delete-requests/${id}/reject`).then(r => r.data),
 };
 
 // ── Global Settings Service ──────────────

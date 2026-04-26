@@ -6,7 +6,9 @@ const thoughtSchema = new mongoose.Schema({
   avatar: { type: String },
   content: { type: String, required: true },
   likes_count: { type: Number, default: 0 },
-  liked_by: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
+  liked_by: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  isPendingDelete: { type: Boolean, default: false },
+  expiresAt: { type: Date, expires: 0 } // Auto-delete TTL index
 }, { timestamps: true });
 
 export default mongoose.model('Thought', thoughtSchema);

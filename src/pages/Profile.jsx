@@ -97,11 +97,9 @@ export default function Profile() {
     </div>
   );
 
-  const { user: u, stats, recentActivity } = profile;
+  const { user: u, stats, recentActivity, completedCourses } = profile;
   const joinDate = new Date(u.createdAt).toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' });
-  const completionRate = stats.totalVideos > 0
-    ? Math.round((stats.completedVideos / stats.totalVideos) * 100)
-    : 0;
+  const completionRate = stats.completionRate || 0;
 
   const AVATARS = [
     'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
@@ -247,15 +245,16 @@ export default function Profile() {
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { icon: <CheckCircle2 size={22} className="text-green-500" />, label: 'Completed', value: stats.completedVideos, sub: `of ${stats.totalVideos} videos`, bg: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' },
-            { icon: <Clock size={22} className="text-indigo-500" />, label: 'Watch Time', value: formatDuration(stats.totalWatchTime), sub: 'total', bg: 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800' },
-            { icon: <Flame size={22} className="text-orange-500" />, label: 'Streak', value: `${stats.currentStreak} 🔥`, sub: 'days', bg: 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800' },
-            { icon: <BookOpen size={22} className="text-blue-500" />, label: 'Courses', value: stats.totalCourses, sub: 'enrolled', bg: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' },
+            { icon: <CheckCircle2 size={22} className="text-green-500" />, label: 'Videos Done', value: stats.completedVideos, sub: `of ${stats.totalVideos} total`, bg: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' },
+            { icon: <Clock size={22} className="text-indigo-500" />, label: 'Watch Time', value: formatDuration(stats.totalWatchTime), sub: 'total study time', bg: 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800' },
+            { icon: <Flame size={22} className="text-orange-500" />, label: 'Streak', value: `${stats.currentStreak} 🔥`, sub: 'days active', bg: 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800' },
+            { icon: <Trophy size={22} className="text-purple-500" />, label: 'Mastered', value: stats.completedCoursesCount, sub: 'completed courses', bg: 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800' },
           ].map((s, i) => (
-            <div key={i} className={`p-5 rounded-2xl border ${s.bg} glass-card flex flex-col items-center text-center gap-2`}>
+            <div key={i} className={`p-5 rounded-2xl border ${s.bg} glass-card flex flex-col items-center text-center gap-2 transition hover:scale-105 duration-300 shadow-sm`}>
               <div className="p-2 bg-white/60 dark:bg-slate-800/60 rounded-xl">{s.icon}</div>
               <span className="text-2xl font-black dark:text-white">{s.value}</span>
-              <span className="text-xs text-slate-400">{s.sub}</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{s.label}</span>
+              <span className="text-[10px] text-slate-400">{s.sub}</span>
             </div>
           ))}
         </div>
@@ -280,31 +279,65 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* Recent Activity */}
-        <div className="glass-card p-6 rounded-2xl">
-          <h3 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
-            <Trophy size={18} className="text-orange-500" /> Recent Completions
-          </h3>
-          {recentActivity.length === 0 ? (
-            <p className="text-slate-400 text-sm italic text-center py-8">No completed videos yet. Start learning!</p>
-          ) : (
-            <div className="space-y-3">
-              {recentActivity.map((v, i) => (
-                <div key={v._id || i} className="flex items-center gap-4 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-100 dark:border-slate-800">
-                  <div className="w-8 h-8 bg-green-100 dark:bg-green-900/30 text-green-500 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <CheckCircle2 size={16} />
+        {/* Main Grid for Activity and Completed Courses */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Completed Courses */}
+          <div className="glass-card p-6 rounded-2xl border border-slate-200 dark:border-slate-800">
+            <h3 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+              <BookOpen size={18} className="text-purple-500" /> Completed Courses
+            </h3>
+            {completedCourses.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-slate-400 text-sm italic">Finish all videos in a course to see it here!</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {completedCourses.map((c, i) => (
+                  <div key={c._id || i} className="flex items-center justify-between p-4 bg-purple-50/50 dark:bg-purple-900/10 rounded-xl border border-purple-100 dark:border-purple-800/50">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900/40 text-purple-600 rounded-xl flex items-center justify-center font-bold text-xs">
+                        100%
+                      </div>
+                      <div>
+                        <p className="font-bold text-sm dark:text-white">{c.name}</p>
+                        <p className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+                          <CheckCircle2 size={10} className="text-green-500" /> Completed on {new Date(c.completedAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    <Trophy size={16} className="text-amber-400" />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm dark:text-white truncate">{v.title}</p>
-                    <p className="text-xs text-slate-400">{v.course} · {formatDuration(v.duration)}</p>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Recent Activity */}
+          <div className="glass-card p-6 rounded-2xl border border-slate-200 dark:border-slate-800">
+            <h3 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+              <Clock size={18} className="text-orange-500" /> Recent Activity
+            </h3>
+            {recentActivity.length === 0 ? (
+              <p className="text-slate-400 text-sm italic text-center py-8">No completed videos yet. Start learning!</p>
+            ) : (
+              <div className="space-y-3">
+                {recentActivity.map((v, i) => (
+                  <div key={v._id || i} className="flex items-center gap-4 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-100 dark:border-slate-800">
+                    <div className="w-8 h-8 bg-green-100 dark:bg-green-900/30 text-green-500 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <CheckCircle2 size={16} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm dark:text-white truncate">{v.title}</p>
+                      <p className="text-xs text-slate-400 truncate">{v.course} · {formatDuration(v.duration)}</p>
+                    </div>
+                    <span className="text-[10px] text-slate-400 whitespace-nowrap">
+                      {v.completedAt ? new Date(v.completedAt).toLocaleDateString() : '—'}
+                    </span>
                   </div>
-                  <span className="text-xs text-slate-400 whitespace-nowrap">
-                    {v.completedAt ? new Date(v.completedAt).toLocaleDateString('en-IN') : '—'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

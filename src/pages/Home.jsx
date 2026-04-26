@@ -284,7 +284,7 @@ export default function Home() {
             )}
             {user?.features?.canUseCommunity !== false && (
               <Link to="/thoughts" className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-all">
-                <Lightbulb size={18} /> Community
+                <Lightbulb size={18} /> Thoughts
               </Link>
             )}
             <Link to="/profile" className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-all">

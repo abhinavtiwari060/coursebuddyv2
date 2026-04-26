@@ -18,6 +18,7 @@ import QuizResults from './pages/QuizResults';
 import QuizLeaderboard from './pages/QuizLeaderboard';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import ErrorBoundary from './components/ErrorBoundary';
+import GlobalNav from './components/GlobalNav';
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
@@ -101,6 +102,7 @@ export default function App() {
       <Router>
         <AuthProvider>
           <ErrorBoundary>
+            <GlobalNav />
             <Routes>
               <Route path="/login"  element={<Login />} />
               <Route path="/signup" element={<Signup />} />

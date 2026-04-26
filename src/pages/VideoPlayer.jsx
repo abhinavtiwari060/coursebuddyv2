@@ -16,19 +16,7 @@ export default function VideoPlayer() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(true);
   const [duration, setDuration] = useState(0);
-  const [playbackRate, setPlaybackRate] = useState(1);
-  const [isPlaying, setIsPlaying] = useState(true);
   
-  const ytPlayer = useRef(null);
-  const isReady = useRef(false);
-
-  // Extract YouTube video ID from link
-  const getYouTubeId = (url) => {
-    if (!url) return null;
-    const match = url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
-    return match ? match[1] : null;
-  };
-
   const progressTimerRef = useRef(null);
   const lastSavedTime = useRef(0);
 
@@ -107,11 +95,6 @@ export default function VideoPlayer() {
     return () => clearInterval(progressTimerRef.current);
   }, [currentVideo]);
 
-  // changeSpeed is not natively supported on raw iframe without API
-  const changeSpeed = (rate) => {
-    setPlaybackRate(rate);
-  };
-
   const saveProgress = useCallback(async (watchedVideoId, position = 0) => {
     if (!watchedVideoId) return;
     try {
@@ -133,6 +116,11 @@ export default function VideoPlayer() {
       await videoService.markComplete(currentVideo._id);
       await saveProgress(currentVideo._id, 0);
       setVideos(vids => vids.map(v => v._id === currentVideo._id ? { ...v, completed: true } : v));
+      
+      const res = await videoService.checkCompletion(currentVideo._id);
+      if (res.courseCompleted) {
+         console.log("[VIDEO] Course completed:", res.courseName);
+      }
     } catch (err) {
       console.error("[VIDEO] Failed to mark complete:", err);
     }
@@ -254,19 +242,6 @@ export default function VideoPlayer() {
                 <CheckCircle2 size={18} />
                 {currentVideo?.completed ? 'Completed ✓' : 'Mark as Done'}
               </button>
-              
-              <div className="flex items-center bg-white/10 rounded-xl p-1 ml-2">
-                {[0.5, 1, 1.5, 2].map(rate => (
-                  <button
-                    key={rate}
-                    onClick={() => changeSpeed(rate)}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition ${playbackRate === rate ? 'bg-orange-500 text-white' : 'text-slate-400 hover:text-white hover:bg-white/10'}`}
-                  >
-                    {rate}x
-                  </button>
-                ))}
-              </div>
-
               <button
                 onClick={() => navigateTo(nextVideo)}
                 disabled={!nextVideo}

@@ -14,6 +14,7 @@ import SuggestedPlaylistsAdmin from '../components/SuggestedPlaylistsAdmin';
 import AdminCourseCreator from '../components/AdminCourseCreator';
 import AdminQuizManager from '../components/AdminQuizManager';
 import AdminAIQuiz from '../components/AdminAIQuiz';
+import AdminDeleteRequests from '../components/AdminDeleteRequests';
 import { quizService } from '../api/api';
 
 
@@ -28,6 +29,7 @@ const TABS = [
   { id: 'quiz',          label: 'Quiz Manager',   icon: <BarChart2 size={16} />,   color: 'purple' },
   { id: 'ai_quiz',       label: 'AI Quiz',        icon: <Sparkles size={16} />,    color: 'violet' },
   { id: 'permissions',   label: 'Permissions',    icon: <ShieldAlert size={16} />, color: 'indigo' },
+  { id: 'delete_requests', label: 'Delete Requests', icon: <Trash2 size={16} />, color: 'red' },
   { id: 'bugs',          label: 'Bug Reports',    icon: <Bug size={16} />,         color: 'red'    },
   { id: 'notifications', label: 'Settings',       icon: <SettingsIcon size={16} />,color: 'slate'  },
 ];
@@ -38,7 +40,7 @@ const FEATURE_LABELS = {
   canAddCourse: 'Add Course',
   canDeleteCourse: 'Delete Course',
   canUsePomodoro: 'Pomodoro Timer',
-  canUseCommunity: 'Community',
+  canUseCommunity: 'Thoughts',
   canUseLeaderboard: 'Leaderboard',
   canReportBug: 'Bug Report',
 };
@@ -877,6 +879,13 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* Delete Requests Tab */}
+        {activeTab === 'delete_requests' && (
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <AdminDeleteRequests />
+          </div>
+        )}
+
         {/* Push & Theme Tab */}
         {activeTab === 'notifications' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -934,7 +943,7 @@ export default function AdminDashboard() {
                      value={pushBody} onChange={e => setPushBody(e.target.value)} 
                      rows="3"
                      className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-400 dark:text-white resize-none"
-                     placeholder="Tap here to check out the new Community section..."
+                     placeholder="Tap here to check out the new Thoughts section..."
                    />
                 </div>
                 

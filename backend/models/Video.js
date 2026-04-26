@@ -14,6 +14,7 @@ const videoSchema = new mongoose.Schema({
   thumbnail: { type: String, default: '' },
   completed: { type: Boolean, default: false },
   completedAt: { type: Date, default: null },
+  isPendingDelete: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
   order: { type: Number, default: Date.now }
 });

@@ -160,6 +160,19 @@ export default function AdminCourseCreator() {
     setExpandedIdx(null);
   };
 
+  const handleDeleteCourseByName = async (name) => {
+    if (!window.confirm(`Are you sure you want to delete "${name}" for all users?`)) return;
+    setDeletingCourse(prev => ({ ...prev, [name]: true }));
+    try {
+      await adminService.deleteCourseByName(name);
+      setAssignedCourses(prev => prev.filter(c => c._id !== name));
+    } catch (err) {
+      alert('Failed to delete course: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setDeletingCourse(prev => ({ ...prev, [name]: false }));
+    }
+  };
+
   // ── Render ───────────────────────────────────────────
   return (
     <div className="space-y-6">
@@ -496,9 +509,19 @@ export default function AdminCourseCreator() {
                       {new Date(c.latestAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                     </p>
                   </div>
-                  <span className="text-xs font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 px-2.5 py-1 rounded-full">
-                    {c.userCount} user{c.userCount !== 1 ? 's' : ''}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 px-2.5 py-1 rounded-full">
+                      {c.userCount} user{c.userCount !== 1 ? 's' : ''}
+                    </span>
+                    <button
+                      onClick={() => handleDeleteCourseByName(c._id)}
+                      disabled={deletingCourse[c._id]}
+                      className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition disabled:opacity-50"
+                      title="Delete Course for All Users"
+                    >
+                      {deletingCourse[c._id] ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

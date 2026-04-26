@@ -25,7 +25,13 @@ export default function ThoughtFeed() {
     }
   };
 
-  const hasPosted = thoughts.some((t) => t.user_id === user?.id);
+  const hasPosted = thoughts.some((t) => {
+    if (t.user_id !== user?.id) return false;
+    const createdAt = new Date(t.createdAt);
+    const now = new Date();
+    const hoursDiff = (now - createdAt) / (1000 * 60 * 60);
+    return hoursDiff < 24;
+  });
 
   const handleCreateSuccess = (newThought) => {
     setThoughts([{ ...newThought, username: user.name, avatar: user.avatar }, ...thoughts]);
