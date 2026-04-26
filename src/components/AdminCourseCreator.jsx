@@ -124,6 +124,8 @@ export default function AdminCourseCreator() {
         .map(v => ({
           title: v.title,
           link: `https://www.youtube.com/watch?v=${v.videoId}`,
+          youtubeVideoId: v.videoId,
+          playlistId: playlist.playlistId,
           thumbnail: v.thumbnail,
           duration: v.duration,
           platform: 'YouTube',

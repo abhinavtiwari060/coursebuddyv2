@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import ReactPlayer from 'react-player';
 import { videoService } from '../api/api';
 import { progressService } from '../api/api';
 import { ArrowLeft, ChevronLeft, ChevronRight, CheckCircle2, PlayCircle, Lock, List, X, BookOpen } from 'lucide-react';
@@ -17,6 +16,11 @@ export default function VideoPlayer() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(true);
   const [duration, setDuration] = useState(0);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [isPlaying, setIsPlaying] = useState(true);
+  
+  const ytPlayer = useRef(null);
+  const isReady = useRef(false);
 
   // Extract YouTube video ID from link
   const getYouTubeId = (url) => {
@@ -66,6 +70,48 @@ export default function VideoPlayer() {
     }
   };
 
+  const selectedVideo = videos.find((video) => video._id === videoId) || videos[0];
+
+  // 1. Log selected route param
+  console.log("[DEBUG] Route Video ID:", videoId);
+  // 2. Log full playlist data
+  console.log("[DEBUG] Fetched Videos:", videos);
+  // 3. Log selected video object
+  console.log("[DEBUG] Selected Video:", selectedVideo);
+  // 4. Log youtubeVideoId
+  console.log("[DEBUG] YouTube Video ID:", selectedVideo?.youtubeVideoId);
+  // 5. Log iframe URL
+  if (selectedVideo?.youtubeVideoId) {
+    console.log(
+      "[DEBUG] Embed URL:",
+      `https://www.youtube.com/embed/${selectedVideo.youtubeVideoId}?autoplay=1`
+    );
+  }
+
+  // 9. Add validation before iframe render
+  const isValidVideo =
+    selectedVideo &&
+    selectedVideo.youtubeVideoId &&
+    selectedVideo.youtubeVideoId.length > 5;
+
+  useEffect(() => {
+    setCurrentVideo(selectedVideo);
+  }, [selectedVideo]);
+
+  // Handle Progress tracking
+  useEffect(() => {
+    progressTimerRef.current = setInterval(() => {
+      // With a raw iframe, we can't track precise progress without YT API.
+      // So we'll just track time spent on the page as a fallback.
+    }, 10000);
+    return () => clearInterval(progressTimerRef.current);
+  }, [currentVideo]);
+
+  // changeSpeed is not natively supported on raw iframe without API
+  const changeSpeed = (rate) => {
+    setPlaybackRate(rate);
+  };
+
   const saveProgress = useCallback(async (watchedVideoId, position = 0) => {
     if (!watchedVideoId) return;
     try {
@@ -103,8 +149,6 @@ export default function VideoPlayer() {
   const nextVideo = currentIndex < videos.length - 1 ? videos[currentIndex + 1] : null;
   const completedCount = videos.filter(v => v.completed).length;
   const courseProgress = videos.length > 0 ? Math.round((completedCount / videos.length) * 100) : 0;
-
-  const ytId = currentVideo ? getYouTubeId(currentVideo.link) : null;
 
   if (loading) {
     return (
@@ -149,37 +193,35 @@ export default function VideoPlayer() {
         <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
           {/* Player Error Boundary Wrapper */}
           <div className="w-full bg-black aspect-video relative flex items-center justify-center">
-            {ytId ? (
-              <ReactPlayer
-                ref={playerRef}
-                key={ytId}
-                url={`https://www.youtube.com/watch?v=${ytId}`}
+            {isValidVideo ? (
+              <iframe
                 width="100%"
                 height="100%"
-                controls
-                playing
-                onDuration={setDuration}
-                onError={(e) => console.error("[VIDEO] Player error:", e)}
-                onProgress={({ playedSeconds }) => {
-                  const sec = Math.floor(playedSeconds);
-                  // Save progress every 10 seconds of play, only once per 10s mark
-                  if (sec > 0 && sec % 10 === 0 && sec !== lastSavedTime.current) {
-                    lastSavedTime.current = sec;
-                    saveProgress(currentVideo._id, playedSeconds);
-                  }
-                  // Auto mark complete at 90%
-                  if (duration > 0 && playedSeconds > duration * 0.9 && !currentVideo.completed) {
-                    handleComplete();
-                  }
-                }}
+                src={`https://www.youtube.com/embed/${selectedVideo.youtubeVideoId}?autoplay=1`}
+                title={selectedVideo.title}
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                onLoad={() => console.log("[DEBUG] Iframe Loaded successfully")}
+                onError={(e) => console.log("[DEBUG] Iframe Failed to load", e)}
               />
             ) : (
-              <div className="flex flex-col items-center gap-4 text-slate-400 p-10 text-center">
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-slate-400 p-10 text-center bg-black">
                 <PlayCircle size={64} className="opacity-20" />
                 <div>
                   <p className="text-lg font-bold text-white mb-1">Unable to Load Video</p>
                   <p className="text-sm">The video may be private, deleted, or from an unsupported platform.</p>
                 </div>
+                
+                {/* 8. Add fallback debugging UI */}
+                <div className="mt-4 p-4 border border-red-500/30 bg-red-500/10 rounded-xl text-left font-mono text-xs text-red-200">
+                  <p className="font-bold text-red-400 mb-1">DEBUG INFO:</p>
+                  <p>Video ID: {selectedVideo?.youtubeVideoId || "undefined"}</p>
+                  <p>Mongo ID: {selectedVideo?._id || "undefined"}</p>
+                  <p>Title: {selectedVideo?.title || "undefined"}</p>
+                  <p>Link: {selectedVideo?.link || "undefined"}</p>
+                </div>
+
                 {currentVideo?.link && (
                   <a href={currentVideo.link} target="_blank" rel="noreferrer" className="mt-2 px-6 py-2 bg-white/10 hover:bg-white/20 rounded-xl transition text-sm font-bold flex items-center gap-2">
                     Open Externally <ArrowLeft size={16} className="rotate-180" />
@@ -212,6 +254,18 @@ export default function VideoPlayer() {
                 <CheckCircle2 size={18} />
                 {currentVideo?.completed ? 'Completed ✓' : 'Mark as Done'}
               </button>
+              
+              <div className="flex items-center bg-white/10 rounded-xl p-1 ml-2">
+                {[0.5, 1, 1.5, 2].map(rate => (
+                  <button
+                    key={rate}
+                    onClick={() => changeSpeed(rate)}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition ${playbackRate === rate ? 'bg-orange-500 text-white' : 'text-slate-400 hover:text-white hover:bg-white/10'}`}
+                  >
+                    {rate}x
+                  </button>
+                ))}
+              </div>
 
               <button
                 onClick={() => navigateTo(nextVideo)}

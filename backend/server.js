@@ -338,6 +338,36 @@ app.get('/api/videos', authMiddleware, async (req, res) => {
   res.json(videos);
 });
 
+// Temporary Migration Endpoint — extracts youtubeVideoId from existing link fields
+app.get('/api/migrate-videos', async (req, res) => {
+  try {
+    const extractId = (url) => {
+      if (!url) return null;
+      const m = url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
+      return m ? m[1] : null;
+    };
+
+    // Only touch documents that are missing youtubeVideoId
+    const videos = await Video.find({
+      $or: [{ youtubeVideoId: { $exists: false } }, { youtubeVideoId: '' }]
+    }).lean();
+
+    let updated = 0;
+    for (const video of videos) {
+      const ytId = extractId(video.link);
+      if (ytId) {
+        await Video.updateOne({ _id: video._id }, { $set: { youtubeVideoId: ytId } });
+        updated++;
+      }
+    }
+    console.log(`[MIGRATE] Done — updated ${updated} videos.`);
+    res.json({ success: true, updated });
+  } catch (err) {
+    console.error('[MIGRATE] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/videos', authMiddleware, async (req, res) => {
   try {
     // Get max order for this user+course to maintain sequence
@@ -345,8 +375,20 @@ app.post('/api/videos', authMiddleware, async (req, res) => {
       .sort({ order: -1 });
     const nextOrder = lastVideo ? (lastVideo.order || 0) + 1 : 1;
 
+    // Helper to extract ID
+    const extractVideoId = (url) => {
+      if (!url) return null;
+      const match = url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
+      return match ? match[1] : null;
+    };
+
+    const payload = { ...req.body };
+    if (!payload.youtubeVideoId && payload.link) {
+      payload.youtubeVideoId = extractVideoId(payload.link);
+    }
+
     const video = new Video({
-      ...req.body,
+      ...payload,
       userId: req.user.id,
       order: req.body.order !== undefined ? req.body.order : nextOrder,
     });
@@ -359,9 +401,21 @@ app.post('/api/videos', authMiddleware, async (req, res) => {
 
 app.put('/api/videos/:id', authMiddleware, async (req, res) => {
   try {
+    // Helper to extract ID
+    const extractVideoId = (url) => {
+      if (!url) return null;
+      const match = url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
+      return match ? match[1] : null;
+    };
+
+    const payload = { ...req.body };
+    if (!payload.youtubeVideoId && payload.link) {
+      payload.youtubeVideoId = extractVideoId(payload.link);
+    }
+
     const video = await Video.findOneAndUpdate(
       { _id: req.params.id, userId: req.user.id },
-      req.body,
+      payload,
       { new: true }
     );
     if (!video) return res.status(404).json({ error: 'Video not found' });
@@ -1002,13 +1056,18 @@ app.get('/api/admin/youtube/playlist', authMiddleware, adminMiddleware, async (r
         }
       });
       const data = listRes.data;
+      console.log("[DEBUG] YouTube Playlist Response (Items Count):", data.items?.length);
+      if (data.items?.[0]) {
+        console.log("[DEBUG] Sample Item resourceId:", data.items[0].snippet?.resourceId?.videoId || data.items[0].contentDetails?.videoId);
+      }
+
       if (!playlistTitle && data.items?.[0]?.snippet?.channelTitle) {
         playlistTitle = data.items[0].snippet.playlistId || '';
       }
       nextPageToken = data.nextPageToken || '';
 
       for (const item of data.items || []) {
-        const videoId = item.contentDetails?.videoId;
+        const videoId = item.snippet?.resourceId?.videoId || item.contentDetails?.videoId;
         const snippet = item.snippet;
         if (!videoId || snippet?.title === 'Deleted video' || snippet?.title === 'Private video') continue;
         videos.push({
@@ -1089,6 +1148,8 @@ app.post('/api/admin/courses/assign', authMiddleware, adminMiddleware, async (re
           course: courseName,
           title: v.title,
           link: v.link,
+          youtubeVideoId: v.youtubeVideoId,
+          playlistId: v.playlistId,
           platform: v.platform || 'YouTube',
           duration: v.duration || 0,
           thumbnail: v.thumbnail || '',
@@ -1096,7 +1157,13 @@ app.post('/api/admin/courses/assign', authMiddleware, adminMiddleware, async (re
           order: Date.now() + idx,
         }));
 
-      if (newVideos.length) await Video.insertMany(newVideos);
+      if (newVideos.length) {
+        const saved = await Video.insertMany(newVideos);
+        console.log("[DEBUG] Saved Video count:", saved.length);
+        if (saved.length > 0) {
+          console.log("[DEBUG] Sample Saved Video:", { _id: saved[0]._id, youtubeVideoId: saved[0].youtubeVideoId, title: saved[0].title });
+        }
+      }
 
       // Notify user
       await Notification.create({
