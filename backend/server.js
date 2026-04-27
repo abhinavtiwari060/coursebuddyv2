@@ -6,6 +6,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
 import axios from 'axios';
+import Groq from 'groq-sdk';
 
 // Models
 import User from './models/User.js';
@@ -2125,60 +2126,44 @@ app.get('/api/quiz/:id/leaderboard', authMiddleware, async (req, res) => {
   }
 });
 
-// ── AI Quiz Generation (Google Gemini) ───────────────────
-// Model preference order — tries each until one succeeds
-const GEMINI_MODELS = [
-  'gemini-2.0-flash',
-  'gemini-1.5-flash',
-  'gemini-1.5-pro',
-];
+// ── AI Quiz Generation (Groq Cloud) ───────────────────
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY,
+});
 
-async function callGemini(apiKey, prompt) {
-  let lastError = null;
-  for (const model of GEMINI_MODELS) {
-    const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
-    console.log(`[AI QUIZ] Trying model: ${model}`);
-    try {
-      const res = await axios.post(
-        url,
+async function callGroq(prompt) {
+  try {
+    console.log(`[AI QUIZ] Prompting Groq (llama3-8b-8192)...`);
+    const chatCompletion = await groq.chat.completions.create({
+      messages: [
         {
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 8192,
-            // responseMimeType: 'application/json' is omitted here because it can cause 400 errors 
-            // if not supported by the specific model version or endpoint. 
-            // We handle JSON parsing manually from the response text.
-          }
+          role: "system",
+          content: "You are a helpful assistant that generates educational quiz questions in pure JSON format."
         },
-        { headers: { 'Content-Type': 'application/json' }, timeout: 60000 }
-      );
-      
-      const text = res.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      if (!text) {
-        console.warn(`[AI QUIZ] ⚠️ Model ${model} returned empty content. Trying next...`);
-        continue;
-      }
-      
-      console.log(`[AI QUIZ] ✅ Model ${model} responded. Raw length: ${text.length} chars`);
-      return { text, model };
-    } catch (err) {
-      const status = err.response?.status;
-      const msg = err.response?.data?.error?.message || err.message;
-      console.warn(`[AI QUIZ] ❌ Model ${model} failed (HTTP ${status}): ${msg}`);
-      lastError = err;
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      model: "llama3-8b-8192",
+      temperature: 0.7,
+      max_tokens: 8192,
+      top_p: 1,
+      stream: false,
+      response_format: { type: "json_object" }
+    });
 
-      // If it's a quota (429) or auth (401/403) error, don't bother trying other models
-      if (status === 429 || status === 401 || status === 403) {
-        throw err;
-      }
-      // For 404, 400, or 500, try the next model in the list
-      continue;
+    const text = chatCompletion.choices[0]?.message?.content || "";
+    if (!text) {
+      throw new Error("Groq returned empty content.");
     }
+
+    console.log(`[AI QUIZ] ✅ Groq responded. Raw length: ${text.length} chars`);
+    return { text, model: "llama3-8b-8192" };
+  } catch (err) {
+    console.error(`[AI QUIZ] ❌ Groq completion failed:`, err.message);
+    throw err;
   }
-  
-  const finalMsg = lastError?.response?.data?.error?.message || lastError?.message || 'Unknown error';
-  throw new Error(`All Gemini models failed. Last error: ${finalMsg}`);
 }
 
 // Bulk create quiz with questions (used by AI Quiz Generator)
@@ -2226,12 +2211,12 @@ app.post('/api/admin/ai-quiz/generate', authMiddleware, adminMiddleware, async (
       return res.status(400).json({ error: 'Topic is required.' });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey || apiKey === 'YOUR_GOOGLE_GEMINI_API_KEY_HERE' || !apiKey.trim()) {
-      console.error('[AI QUIZ] GEMINI_API_KEY not configured in backend .env');
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey || apiKey === 'YOUR_GROQ_API_KEY_HERE' || !apiKey.trim()) {
+      console.error('[AI QUIZ] GROQ_API_KEY not configured in backend .env');
       return res.status(500).json({
-        error: 'Gemini API key not configured. Add GEMINI_API_KEY to backend/.env',
-        hint: 'Get your key from https://aistudio.google.com/app/apikey'
+        error: 'Groq API key not configured. Add GROQ_API_KEY to backend/.env',
+        hint: 'Get your key from https://console.groq.com/keys'
       });
     }
 
@@ -2257,10 +2242,7 @@ Rules:
 - Questions must be unique and educational
 - Return exactly ${count} questions`;
 
-    console.log(`[AI QUIZ] Prompting Gemini...`);
-    console.log(`[AI QUIZ] PROMPT:\n${prompt}`);
-
-    const { text: raw, model: usedModel } = await callGemini(apiKey, prompt);
+    const { text: raw, model: usedModel } = await callGroq(prompt);
 
     console.log(`[AI QUIZ] Used model: ${usedModel}`);
     console.log(`[AI QUIZ] RAW RESPONSE:\n${raw}`);
@@ -2286,21 +2268,25 @@ Rules:
         } catch (e2) {
           console.error('[AI QUIZ] Regex extraction also failed:', e2.message);
           return res.status(500).json({
-            error: 'Gemini returned malformed JSON. Please try again.',
+            error: 'Groq returned malformed JSON. Please try again.',
             hint: 'If this keeps happening, try a more specific topic.',
           });
         }
       } else {
         console.error('[AI QUIZ] No JSON array found in response. Raw:', raw.slice(0, 300));
         return res.status(500).json({
-          error: 'Gemini did not return a JSON array. Please try again.',
+          error: 'Groq did not return a JSON array. Please try again.',
           hint: 'Try rephrasing your topic or reducing question count.',
         });
       }
     }
 
+    if (!Array.isArray(questions) && questions.questions) {
+      questions = questions.questions;
+    }
+
     if (!Array.isArray(questions)) {
-      return res.status(500).json({ error: 'Gemini response is not an array. Try again.' });
+      return res.status(500).json({ error: 'Groq response is not an array. Try again.' });
     }
 
     // Validate & sanitize
@@ -2330,31 +2316,22 @@ Rules:
     console.log(`[AI QUIZ] ✅ Done. ${validated.length}/${questions.length} valid questions in ${elapsed}ms. Model: ${usedModel}`);
 
     if (validated.length === 0) {
-      return res.status(500).json({ error: 'Gemini generated 0 valid questions. Try a different topic.' });
+      return res.status(500).json({ error: 'Groq generated 0 valid questions. Try a different topic.' });
     }
 
     res.json({ questions: validated, topic, count: validated.length, model: usedModel, elapsed });
 
   } catch (err) {
     const elapsed = Date.now() - startTime;
-    const geminiMsg = err.response?.data?.error?.message;
-    const geminiStatus = err.response?.status;
-    console.error(`[AI QUIZ] ❌ Fatal error after ${elapsed}ms — HTTP ${geminiStatus}: ${geminiMsg || err.message}`);
-    if (err.response?.data) {
-      console.error('[AI QUIZ] Gemini API response body:', JSON.stringify(err.response.data).slice(0, 500));
-    }
+    console.error(`[AI QUIZ] ❌ Fatal error after ${elapsed}ms: ${err.message}`);
 
     let friendlyError = 'Quiz generation failed. Please try again.';
-    if (geminiStatus === 401 || geminiStatus === 403) {
-      friendlyError = 'Gemini API key is invalid or unauthorised. Check GEMINI_API_KEY in backend/.env';
-    } else if (geminiStatus === 429) {
-      friendlyError = 'Gemini API rate limit exceeded. Wait a moment and try again.';
-    } else if (geminiStatus === 400) {
-      friendlyError = 'Gemini rejected the request. Try a different topic or reduce question count.';
-    } else if (err.code === 'ECONNABORTED') {
-      friendlyError = 'Gemini API timed out (60s). Try fewer questions or a simpler topic.';
-    } else if (geminiMsg) {
-      friendlyError = geminiMsg;
+    if (err.status === 401 || err.status === 403) {
+      friendlyError = 'Groq API key is invalid or unauthorized. Check GROQ_API_KEY in backend/.env';
+    } else if (err.status === 429) {
+      friendlyError = 'Groq API rate limit exceeded. Wait a moment and try again.';
+    } else if (err.status === 400) {
+      friendlyError = 'Groq rejected the request. Try a different topic or reduce question count.';
     }
 
     res.status(500).json({ error: friendlyError });
