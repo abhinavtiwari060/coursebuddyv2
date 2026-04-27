@@ -2206,7 +2206,7 @@ app.post('/api/quiz', authMiddleware, adminMiddleware, async (req, res) => {
 app.post('/api/admin/ai-quiz/generate', authMiddleware, adminMiddleware, async (req, res) => {
   const startTime = Date.now();
   try {
-    const { topic, count = 10 } = req.body;
+    const { topic, courseName, difficulty = 'mixed', count = 10 } = req.body;
     if (!topic || !topic.trim()) {
       return res.status(400).json({ error: 'Topic is required.' });
     }
@@ -2220,26 +2220,36 @@ app.post('/api/admin/ai-quiz/generate', authMiddleware, adminMiddleware, async (
       });
     }
 
-    console.log(`[AI QUIZ] Generating ${count} questions on topic: "${topic}"`);
+    const courseContext = courseName ? ` for the course "${courseName}"` : '';
+    const difficultyRule = difficulty === 'mixed'
+      ? '- Vary difficulty: include a mix of easy, medium, and hard questions'
+      : `- All questions must be difficulty: "${difficulty}"`;
 
-    const prompt = `Generate ${count} MCQ questions on ${topic}.
+    console.log(`[AI QUIZ] Generating ${count} questions on topic: "${topic}"${courseContext} | difficulty: ${difficulty}`);
 
-Return ONLY a pure JSON array. No markdown. No explanation. No extra text. Output must start with [ and end with ].
+    const prompt = `Generate ${count} MCQ questions on the topic "${topic}"${courseContext}.
 
-Required format for each object:
+Return ONLY a valid JSON object with a "questions" array. No markdown. No explanation. No extra text.
+
+Required output format:
 {
-  "question": "Question text here",
-  "options": ["Option A", "Option B", "Option C", "Option D"],
-  "correctAnswer": "The exact text of the correct option",
-  "difficulty": "easy"
+  "questions": [
+    {
+      "question": "Question text here",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correctAnswer": "The exact text of the correct option",
+      "difficulty": "easy",
+      "topic": "${topic.trim()}"
+    }
+  ]
 }
 
 Rules:
 - Exactly 4 options per question
 - correctAnswer MUST be an exact copy of one of the 4 options
 - difficulty must be one of: easy, medium, hard
-- Vary difficulty across questions
-- Questions must be unique and educational
+${difficultyRule}
+- Questions must be unique, accurate, and educational
 - Return exactly ${count} questions`;
 
     const { text: raw, model: usedModel } = await callGroq(prompt);
@@ -2247,7 +2257,7 @@ Rules:
     console.log(`[AI QUIZ] Used model: ${usedModel}`);
     console.log(`[AI QUIZ] RAW RESPONSE:\n${raw}`);
 
-    // Strip markdown code fences if Gemini adds them despite instructions
+    // Strip markdown code fences if Groq adds them despite instructions
     const cleaned = raw
       .replace(/^```(?:json)?\s*/i, '')
       .replace(/\s*```\s*$/, '')
@@ -2255,16 +2265,21 @@ Rules:
 
     let questions;
     try {
-      questions = JSON.parse(cleaned);
-      console.log(`[AI QUIZ] JSON parsed successfully. Item count: ${questions.length}`);
+      const parsed = JSON.parse(cleaned);
+      // Support both { questions: [...] } object and bare [...] array
+      questions = Array.isArray(parsed) ? parsed : (parsed.questions || parsed);
+      console.log(`[AI QUIZ] JSON parsed successfully. Item count: ${Array.isArray(questions) ? questions.length : 'N/A'}`);
     } catch (parseErr) {
       console.warn(`[AI QUIZ] Direct JSON.parse failed: ${parseErr.message}. Trying regex extraction...`);
-      // Try to extract a JSON array anywhere in the response
-      const match = cleaned.match(/\[[\s\S]*\]/);
+      // Try to extract a JSON object { questions: [...] } first, then a bare array
+      const objMatch = cleaned.match(/\{[\s\S]*\}/);
+      const arrMatch = cleaned.match(/\[[\s\S]*\]/);
+      const match = objMatch || arrMatch;
       if (match) {
         try {
-          questions = JSON.parse(match[0]);
-          console.log(`[AI QUIZ] Regex extraction succeeded. Item count: ${questions.length}`);
+          const parsed = JSON.parse(match[0]);
+          questions = Array.isArray(parsed) ? parsed : (parsed.questions || parsed);
+          console.log(`[AI QUIZ] Regex extraction succeeded. Item count: ${Array.isArray(questions) ? questions.length : 'N/A'}`);
         } catch (e2) {
           console.error('[AI QUIZ] Regex extraction also failed:', e2.message);
           return res.status(500).json({
@@ -2273,15 +2288,16 @@ Rules:
           });
         }
       } else {
-        console.error('[AI QUIZ] No JSON array found in response. Raw:', raw.slice(0, 300));
+        console.error('[AI QUIZ] No JSON found in response. Raw:', raw.slice(0, 300));
         return res.status(500).json({
-          error: 'Groq did not return a JSON array. Please try again.',
+          error: 'Groq did not return valid JSON. Please try again.',
           hint: 'Try rephrasing your topic or reducing question count.',
         });
       }
     }
 
-    if (!Array.isArray(questions) && questions.questions) {
+    // Final safety: unwrap nested questions key if still an object
+    if (!Array.isArray(questions) && questions && questions.questions) {
       questions = questions.questions;
     }
 
@@ -2308,7 +2324,8 @@ Rules:
         question:      String(q.question).trim(),
         options:       opts,
         correctAnswer: matchOpt,
-        difficulty:    ['easy', 'medium', 'hard'].includes(q.difficulty) ? q.difficulty : 'medium',
+        difficulty:    ['easy', 'medium', 'hard'].includes(q.difficulty) ? q.difficulty : (difficulty !== 'mixed' ? difficulty : 'medium'),
+        topic:         String(q.topic || topic).trim(),
       });
     }
 
@@ -2319,7 +2336,7 @@ Rules:
       return res.status(500).json({ error: 'Groq generated 0 valid questions. Try a different topic.' });
     }
 
-    res.json({ questions: validated, topic, count: validated.length, model: usedModel, elapsed });
+    res.json({ questions: validated, topic, courseName: courseName || '', difficulty, count: validated.length, model: usedModel, elapsed });
 
   } catch (err) {
     const elapsed = Date.now() - startTime;

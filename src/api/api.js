@@ -218,6 +218,14 @@ export const progressService = {
   get: (courseId) => api.get(`/api/progress/${courseId}`).then(r => r.data),
 };
 
+// ── AI Quizer Service ────────────────────
+export const aiQuizerService = {
+  /** Generate MCQ questions via Groq AI */
+  generate: (data) => api.post('/api/admin/ai-quiz/generate', data).then(r => r.data),
+  /** Bulk-create a quiz + questions from AI output */
+  saveQuiz: (data) => api.post('/api/quiz', data).then(r => r.data),
+};
+
 
 // Default export
 export default api;
