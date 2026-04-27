@@ -99,7 +99,16 @@ export default function PlaylistImport({ courses, onAddVideo }) {
     }
   };
 
-  const importVideo = (vid) => {
+  const importAll = () => {
+    if (!course) { setError('Please select a course before importing.'); return; }
+    const now = Date.now();
+    videos.forEach((v, idx) => {
+      // Pass the incrementing order explicitly
+      importVideo(v, now + idx);
+    });
+  };
+
+  const importVideo = (vid, customOrder = null) => {
     if (!course) { setError('Please select a course before importing.'); return; }
     if (imported.has(vid.videoId)) return;
     setImporting(prev => new Set([...prev, vid.videoId]));
@@ -109,24 +118,19 @@ export default function PlaylistImport({ courses, onAddVideo }) {
         title: vid.title,
         link: vid.link,
         platform: 'YouTube',
-        duration: vid.duration, // ⏳ Now we actually have the exact time!
+        duration: vid.duration,
         course,
         tag: 'playlist',
         completed: false,
         createdAt: new Date().toISOString(),
         completedAt: null,
         notes: '',
-        order: Date.now(),
+        order: customOrder || Date.now(),
         thumbnail: vid.thumbnail,
       });
       setImporting(prev => { const s = new Set(prev); s.delete(vid.videoId); return s; });
       setImported(prev => new Set([...prev, vid.videoId]));
     }, 300);
-  };
-
-  const importAll = () => {
-    if (!course) { setError('Please select a course before importing.'); return; }
-    videos.forEach(v => importVideo(v));
   };
 
   const notImported = videos.filter(v => !imported.has(v.videoId));

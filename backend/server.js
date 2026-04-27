@@ -1148,8 +1148,10 @@ app.get('/api/admin/youtube/playlist', authMiddleware, adminMiddleware, async (r
         console.log("[DEBUG] Sample Item resourceId:", data.items[0].snippet?.resourceId?.videoId || data.items[0].contentDetails?.videoId);
       }
 
-      if (!playlistTitle && data.items?.[0]?.snippet?.channelTitle) {
-        playlistTitle = data.items[0].snippet.playlistId || '';
+      if (!playlistTitle && data.items?.[0]) {
+        // We'll get the real playlist title later from the playlists endpoint, 
+        // but as a fallback we could use the channelTitle or just leave it empty.
+        playlistTitle = data.items[0].snippet?.playlistId || '';
       }
       nextPageToken = data.nextPageToken || '';
 
@@ -1162,7 +1164,7 @@ app.get('/api/admin/youtube/playlist', authMiddleware, adminMiddleware, async (r
           title: snippet.title,
           description: snippet.description?.slice(0, 200) || '',
           thumbnail: snippet.thumbnails?.high?.url || snippet.thumbnails?.default?.url || '',
-          position: snippet.position,
+          position: snippet.position !== undefined ? Number(snippet.position) : videos.length,
           publishedAt: snippet.publishedAt,
         });
       }
@@ -1194,7 +1196,11 @@ app.get('/api/admin/youtube/playlist', authMiddleware, adminMiddleware, async (r
     });
     const playlistName = plRes.data.items?.[0]?.snippet?.title || 'Imported Playlist';
 
-    res.json({ playlistId, playlistName, videos: videos.sort((a, b) => a.position - b.position) });
+    res.json({ 
+      playlistId, 
+      playlistName, 
+      videos: videos.sort((a, b) => (a.position || 0) - (b.position || 0)) 
+    });
   } catch (err) {
     console.error('YouTube API error:', err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.error?.message || err.message });
@@ -1228,6 +1234,10 @@ app.post('/api/admin/courses/assign', authMiddleware, adminMiddleware, async (re
       const existingLinks = new Set(
         (await Video.find({ userId: uid, course: courseName }).select('link').lean()).map(v => v.link)
       );
+      // Get current max order for this user and course
+      const lastVideo = await Video.findOne({ userId: uid, course: courseName }).sort({ order: -1 });
+      let startOrder = lastVideo ? (lastVideo.order || 0) + 1 : 1;
+
       const newVideos = videos
         .filter(v => !existingLinks.has(v.link))
         .map((v, idx) => ({
@@ -1241,7 +1251,7 @@ app.post('/api/admin/courses/assign', authMiddleware, adminMiddleware, async (re
           duration: v.duration || 0,
           thumbnail: v.thumbnail || '',
           tag: v.tag || '',
-          order: Date.now() + idx,
+          order: startOrder + idx,
         }));
 
       if (newVideos.length) {
@@ -1484,34 +1494,50 @@ app.post('/api/admin/playlists/import', authMiddleware, adminMiddleware, async (
     const plData = plRes.data.items?.[0];
     if (!plData) return res.status(404).json({ error: 'Playlist not found on YouTube' });
 
-    // 2. Fetch All Videos (handling pagination if possible, but let's do 50 for now)
-    const itemsRes = await axios.get('https://www.googleapis.com/youtube/v3/playlistItems', {
-      params: { part: 'snippet,contentDetails', maxResults: 50, playlistId, key: apiKey }
-    });
-    const items = itemsRes.data.items || [];
-    const videoIds = items.map(i => i.contentDetails.videoId);
-
-    // 3. Fetch Video Durations
-    let durationMap = {};
-    if (videoIds.length > 0) {
-      const vidRes = await axios.get('https://www.googleapis.com/youtube/v3/videos', {
-        params: { part: 'contentDetails', id: videoIds.join(','), key: apiKey }
+    // 2. Fetch All Videos (with pagination)
+    let videos = [];
+    let nextPageToken = '';
+    do {
+      const itemsRes = await axios.get('https://www.googleapis.com/youtube/v3/playlistItems', {
+        params: { 
+          part: 'snippet,contentDetails', 
+          maxResults: 50, 
+          playlistId, 
+          pageToken: nextPageToken || undefined,
+          key: apiKey 
+        }
       });
-      for (const v of vidRes.data.items || []) {
-        durationMap[v.id] = parseISO8601Duration(v.contentDetails.duration);
-      }
-    }
+      const data = itemsRes.data;
+      nextPageToken = data.nextPageToken || '';
 
-    const videos = items.map((item, idx) => ({
-      videoId: item.contentDetails.videoId,
-      title: item.snippet.title,
-      description: item.snippet.description,
-      thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
-      duration: durationMap[item.contentDetails.videoId] || 0,
-      position: idx,
-      channelTitle: item.snippet.videoOwnerChannelTitle,
-      publishedAt: item.snippet.publishedAt,
-    }));
+      const currentBatchVideoIds = (data.items || []).map(i => i.contentDetails.videoId);
+      
+      // Fetch durations for this batch
+      let durationMap = {};
+      if (currentBatchVideoIds.length > 0) {
+        const vidRes = await axios.get('https://www.googleapis.com/youtube/v3/videos', {
+          params: { part: 'contentDetails', id: currentBatchVideoIds.join(','), key: apiKey }
+        });
+        for (const v of vidRes.data.items || []) {
+          durationMap[v.id] = parseISO8601Duration(v.contentDetails.duration);
+        }
+      }
+
+      const batchVideos = (data.items || []).map((item) => ({
+        videoId: item.contentDetails.videoId,
+        title: item.snippet.title,
+        description: item.snippet.description,
+        thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
+        duration: durationMap[item.contentDetails.videoId] || 0,
+        position: item.snippet.position !== undefined ? Number(item.snippet.position) : videos.length,
+        channelTitle: item.snippet.videoOwnerChannelTitle,
+        publishedAt: item.snippet.publishedAt,
+      }));
+      
+      videos = [...videos, ...batchVideos];
+    } while (nextPageToken);
+
+    videos.sort((a, b) => (a.position || 0) - (b.position || 0));
 
     // Find or create course
     let course = await Course.findOne({ name: courseName });
@@ -1530,8 +1556,8 @@ app.post('/api/admin/playlists/import', authMiddleware, adminMiddleware, async (
         description: plData.snippet.description,
         thumbnail: plData.snippet.thumbnails?.medium?.url,
         channelTitle: plData.snippet.channelTitle,
-        videoCount: plData.contentDetails.itemCount,
-        totalDuration: Object.values(durationMap).reduce((a, b) => a + b, 0),
+        videoCount: videos.length,
+        totalDuration: videos.reduce((acc, v) => acc + (v.duration || 0), 0),
         videos,
         lastFetchedAt: new Date(),
         createdBy: req.user.id,
