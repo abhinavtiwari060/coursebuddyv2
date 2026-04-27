@@ -2127,231 +2127,335 @@ app.get('/api/quiz/:id/leaderboard', authMiddleware, async (req, res) => {
 });
 
 // ── AI Quiz Generation (Groq Cloud) ───────────────────
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
 
-async function callGroq(prompt) {
-  try {
-    console.log(`[AI QUIZ] Prompting Groq (llama3-8b-8192)...`);
-    const chatCompletion = await groq.chat.completions.create({
-      messages: [
-        {
-          role: "system",
-          content: "You are a helpful assistant that generates educational quiz questions in pure JSON format."
-        },
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-      model: "llama3-8b-8192",
-      temperature: 0.7,
-      max_tokens: 8192,
-      top_p: 1,
-      stream: false,
-      response_format: { type: "json_object" }
-    });
+// Log the key on startup (masked) for quick diagnosis
+console.log('[AI QUIZ] GROQ_API_KEY present:', !!process.env.GROQ_API_KEY,
+  '| starts with:', (process.env.GROQ_API_KEY || '').slice(0, 8) + '...');
 
-    const text = chatCompletion.choices[0]?.message?.content || "";
-    if (!text) {
-      throw new Error("Groq returned empty content.");
-    }
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-    console.log(`[AI QUIZ] ✅ Groq responded. Raw length: ${text.length} chars`);
-    return { text, model: "llama3-8b-8192" };
-  } catch (err) {
-    console.error(`[AI QUIZ] ❌ Groq completion failed:`, err.message);
-    throw err;
-  }
+/**
+ * Single Groq call — returns raw text string.
+ * Does NOT use response_format:json_object because llama3-8b-8192
+ * can return a 400 error when that header is set with certain prompts.
+ */
+async function callGroqRaw(prompt) {
+  console.log('[AI QUIZ] → Sending request to Groq (llama3-8b-8192)...');
+  const completion = await groq.chat.completions.create({
+    model: 'llama3-8b-8192',
+    temperature: 0.3,
+    max_tokens: 8192,
+    top_p: 1,
+    stream: false,
+    messages: [
+      {
+        role: 'system',
+        content: 'Return ONLY valid JSON. No markdown. No explanation. No code fences. No extra text before or after the JSON.'
+      },
+      { role: 'user', content: prompt }
+    ]
+  });
+  const aiText = completion.choices?.[0]?.message?.content || '';
+  console.log('[AI QUIZ] RAW GROQ RESPONSE (first 500 chars):', aiText.slice(0, 500));
+  return aiText;
 }
 
-// Bulk create quiz with questions (used by AI Quiz Generator)
+/**
+ * Extract a valid `{ questions: [...] }` object from raw AI text.
+ * Tries multiple strategies to be maximally robust.
+ */
+function extractQuestionsFromText(aiText, topicFallback) {
+  // Strategy 1: strip code fences and parse directly
+  const cleaned = aiText
+    .replace(/```json/gi, '')
+    .replace(/```/g, '')
+    .replace(/\r/g, '')
+    .trim();
+
+  console.log('[AI QUIZ] CLEANED TEXT (first 300 chars):', cleaned.slice(0, 300));
+
+  // Helper: try to extract questions array from a parsed object or raw array
+  const resolveArray = (parsed) => {
+    if (Array.isArray(parsed)) return parsed;
+    if (parsed && Array.isArray(parsed.questions)) return parsed.questions;
+    // Some models wrap in { data: { questions: [] } }
+    if (parsed && parsed.data && Array.isArray(parsed.data.questions)) return parsed.data.questions;
+    return null;
+  };
+
+  // Attempt 1: direct parse
+  try {
+    const parsed = JSON.parse(cleaned);
+    const arr = resolveArray(parsed);
+    if (arr) {
+      console.log(`[AI QUIZ] ✅ Attempt 1 (direct parse) succeeded. ${arr.length} items.`);
+      return arr;
+    }
+  } catch (e1) {
+    console.warn('[AI QUIZ] Attempt 1 (direct parse) failed:', e1.message);
+  }
+
+  // Attempt 2: find first { … } block
+  const objMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (objMatch) {
+    try {
+      const parsed = JSON.parse(objMatch[0]);
+      const arr = resolveArray(parsed);
+      if (arr) {
+        console.log(`[AI QUIZ] ✅ Attempt 2 (object regex) succeeded. ${arr.length} items.`);
+        return arr;
+      }
+    } catch (e2) {
+      console.warn('[AI QUIZ] Attempt 2 (object regex) failed:', e2.message);
+    }
+  }
+
+  // Attempt 3: find first [ … ] array
+  const arrMatch = cleaned.match(/\[[\s\S]*\]/);
+  if (arrMatch) {
+    try {
+      const arr = JSON.parse(arrMatch[0]);
+      if (Array.isArray(arr)) {
+        console.log(`[AI QUIZ] ✅ Attempt 3 (array regex) succeeded. ${arr.length} items.`);
+        return arr;
+      }
+    } catch (e3) {
+      console.warn('[AI QUIZ] Attempt 3 (array regex) failed:', e3.message);
+    }
+  }
+
+  console.error('[AI QUIZ] ❌ All JSON extraction strategies failed. Cleaned text:', cleaned.slice(0, 400));
+  return null;
+}
+
+/**
+ * Validate a single raw question object from the AI.
+ * Returns a sanitized object or null if invalid.
+ */
+function validateQuestion(q, fallbackTopic, fallbackDifficulty) {
+  if (!q || typeof q !== 'object') return null;
+  if (!q.question || typeof q.question !== 'string') return null;
+
+  // Options: must be array of exactly 4 non-empty strings
+  if (!Array.isArray(q.options) || q.options.length !== 4) return null;
+  const opts = q.options.map(o => String(o).trim()).filter(o => o.length > 0);
+  if (opts.length !== 4) return null;
+
+  // correctAnswer: must be non-empty and match one of the options (case-insensitive)
+  if (!q.correctAnswer || typeof q.correctAnswer !== 'string') return null;
+  const correctRaw = String(q.correctAnswer).trim();
+  const matchedOpt = opts.find(o => o.toLowerCase() === correctRaw.toLowerCase());
+  if (!matchedOpt) {
+    console.warn(`[AI QUIZ] Rejected — correctAnswer "${correctRaw}" not in options:`, opts);
+    return null;
+  }
+
+  const difficulty = ['easy', 'medium', 'hard'].includes(q.difficulty)
+    ? q.difficulty
+    : (fallbackDifficulty !== 'mixed' ? fallbackDifficulty : 'medium');
+
+  return {
+    question:      String(q.question).trim(),
+    options:       opts,
+    correctAnswer: matchedOpt,
+    difficulty,
+    topic:         String(q.topic || fallbackTopic).trim(),
+  };
+}
+
+// ── Bulk create quiz with questions (used by AI Quiz Generator) ──────────────
 app.post('/api/quiz', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { title, description, questions, duration, isRetryAllowed, status } = req.body;
-    
     console.log(`[QUIZ BULK] Creating quiz: "${title}" with ${questions?.length || 0} questions`);
+
+    if (!title) return res.status(400).json({ error: 'Quiz title is required.' });
 
     const quiz = await Quiz.create({
       title,
-      description,
+      description: description || '',
       duration: duration || 30,
       isRetryAllowed: isRetryAllowed || false,
       status: status || 'draft',
       createdBy: req.user.id,
     });
 
-    if (questions && Array.isArray(questions)) {
+    if (questions && Array.isArray(questions) && questions.length > 0) {
       const questionDocs = questions.map((q, idx) => ({
         quizId: quiz._id,
         questionText: q.question || q.questionText,
-        option1: q.options ? q.options[0] : q.option1,
-        option2: q.options ? q.options[1] : q.option2,
-        option3: q.options ? q.options[2] : q.option3,
-        option4: q.options ? q.options[3] : q.option4,
+        option1:      q.options ? q.options[0] : q.option1,
+        option2:      q.options ? q.options[1] : q.option2,
+        option3:      q.options ? q.options[2] : q.option3,
+        option4:      q.options ? q.options[3] : q.option4,
         correctAnswer: q.correctAnswer,
-        order: idx + 1
+        order: idx + 1,
       }));
       await Question.insertMany(questionDocs);
+      console.log(`[QUIZ BULK] ✅ Inserted ${questionDocs.length} questions for quiz ${quiz._id}`);
     }
 
     res.status(201).json(quiz);
   } catch (err) {
-    console.error('[QUIZ BULK] Error:', err);
+    console.error('[QUIZ BULK] ❌ Error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
+// ── POST /api/admin/ai-quiz/generate ─────────────────────────────────────────
 app.post('/api/admin/ai-quiz/generate', authMiddleware, adminMiddleware, async (req, res) => {
   const startTime = Date.now();
+
   try {
+    // ── 1. Validate request body
+    console.log('[AI QUIZ] REQ BODY:', JSON.stringify(req.body));
     const { topic, courseName, difficulty = 'mixed', count = 10 } = req.body;
-    if (!topic || !topic.trim()) {
-      return res.status(400).json({ error: 'Topic is required.' });
+
+    if (!topic || !String(topic).trim()) {
+      return res.status(400).json({ success: false, error: 'Topic is required.' });
     }
 
+    // ── 2. Validate API key
     const apiKey = process.env.GROQ_API_KEY;
+    console.log('[AI QUIZ] GROQ_API_KEY present:', !!apiKey, '| placeholder:', apiKey === 'YOUR_GROQ_API_KEY_HERE');
+
     if (!apiKey || apiKey === 'YOUR_GROQ_API_KEY_HERE' || !apiKey.trim()) {
-      console.error('[AI QUIZ] GROQ_API_KEY not configured in backend .env');
       return res.status(500).json({
+        success: false,
         error: 'Groq API key not configured. Add GROQ_API_KEY to backend/.env',
-        hint: 'Get your key from https://console.groq.com/keys'
+        hint: 'Get your key at https://console.groq.com/keys'
       });
     }
 
-    const courseContext = courseName ? ` for the course "${courseName}"` : '';
-    const difficultyRule = difficulty === 'mixed'
-      ? '- Vary difficulty: include a mix of easy, medium, and hard questions'
-      : `- All questions must be difficulty: "${difficulty}"`;
+    // ── 3. Build prompt
+    const topicClean  = String(topic).trim();
+    const countNum    = Math.min(Math.max(Number(count) || 10, 1), 30);
+    const courseCtx   = courseName ? ` for the course "${String(courseName).trim()}"` : '';
+    const diffRule    = difficulty === 'mixed'
+      ? 'Vary difficulty: roughly 1/3 easy, 1/3 medium, 1/3 hard.'
+      : `All questions must use difficulty "${difficulty}".`;
 
-    console.log(`[AI QUIZ] Generating ${count} questions on topic: "${topic}"${courseContext} | difficulty: ${difficulty}`);
+    const prompt = `Generate ${countNum} multiple-choice quiz questions on the topic "${topicClean}"${courseCtx}.
 
-    const prompt = `Generate ${count} MCQ questions on the topic "${topic}"${courseContext}.
+Return ONLY a valid JSON object — no markdown, no explanation, no code fences.
 
-Return ONLY a valid JSON object with a "questions" array. No markdown. No explanation. No extra text.
-
-Required output format:
-{
-  "questions": [
-    {
-      "question": "Question text here",
-      "options": ["Option A", "Option B", "Option C", "Option D"],
-      "correctAnswer": "The exact text of the correct option",
-      "difficulty": "easy",
-      "topic": "${topic.trim()}"
-    }
-  ]
-}
+Exact output format:
+{"questions":[{"question":"...","options":["A","B","C","D"],"correctAnswer":"A","difficulty":"easy","topic":"${topicClean}"}]}
 
 Rules:
-- Exactly 4 options per question
-- correctAnswer MUST be an exact copy of one of the 4 options
-- difficulty must be one of: easy, medium, hard
-${difficultyRule}
-- Questions must be unique, accurate, and educational
-- Return exactly ${count} questions`;
+- Each question has exactly 4 options.
+- correctAnswer is the EXACT TEXT of one of the 4 options.
+- difficulty is one of: easy, medium, hard.
+- ${diffRule}
+- Questions must be accurate, unique, and educational.
+- Return exactly ${countNum} questions.`;
 
-    const { text: raw, model: usedModel } = await callGroq(prompt);
+    console.log('[AI QUIZ] Prompt (first 400 chars):', prompt.slice(0, 400));
 
-    console.log(`[AI QUIZ] Used model: ${usedModel}`);
-    console.log(`[AI QUIZ] RAW RESPONSE:\n${raw}`);
+    // ── 4. Call Groq with retry (max 2 retries)
+    const MAX_RETRIES = 2;
+    let aiText = '';
+    let usedModel = 'llama3-8b-8192';
+    let lastGroqError = null;
 
-    // Strip markdown code fences if Groq adds them despite instructions
-    const cleaned = raw
-      .replace(/^```(?:json)?\s*/i, '')
-      .replace(/\s*```\s*$/, '')
-      .trim();
-
-    let questions;
-    try {
-      const parsed = JSON.parse(cleaned);
-      // Support both { questions: [...] } object and bare [...] array
-      questions = Array.isArray(parsed) ? parsed : (parsed.questions || parsed);
-      console.log(`[AI QUIZ] JSON parsed successfully. Item count: ${Array.isArray(questions) ? questions.length : 'N/A'}`);
-    } catch (parseErr) {
-      console.warn(`[AI QUIZ] Direct JSON.parse failed: ${parseErr.message}. Trying regex extraction...`);
-      // Try to extract a JSON object { questions: [...] } first, then a bare array
-      const objMatch = cleaned.match(/\{[\s\S]*\}/);
-      const arrMatch = cleaned.match(/\[[\s\S]*\]/);
-      const match = objMatch || arrMatch;
-      if (match) {
-        try {
-          const parsed = JSON.parse(match[0]);
-          questions = Array.isArray(parsed) ? parsed : (parsed.questions || parsed);
-          console.log(`[AI QUIZ] Regex extraction succeeded. Item count: ${Array.isArray(questions) ? questions.length : 'N/A'}`);
-        } catch (e2) {
-          console.error('[AI QUIZ] Regex extraction also failed:', e2.message);
-          return res.status(500).json({
-            error: 'Groq returned malformed JSON. Please try again.',
-            hint: 'If this keeps happening, try a more specific topic.',
-          });
-        }
-      } else {
-        console.error('[AI QUIZ] No JSON found in response. Raw:', raw.slice(0, 300));
-        return res.status(500).json({
-          error: 'Groq did not return valid JSON. Please try again.',
-          hint: 'Try rephrasing your topic or reducing question count.',
-        });
+    for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
+      try {
+        console.log(`[AI QUIZ] Groq call attempt ${attempt}/${MAX_RETRIES + 1}...`);
+        aiText = await callGroqRaw(prompt);
+        if (aiText && aiText.trim().length > 10) break; // got a real response
+        console.warn(`[AI QUIZ] Attempt ${attempt} returned empty/short response, retrying...`);
+        lastGroqError = new Error('Groq returned empty response');
+      } catch (groqErr) {
+        lastGroqError = groqErr;
+        console.error(`[AI QUIZ] Groq attempt ${attempt} threw:`, groqErr.message);
+        if (attempt > MAX_RETRIES) throw groqErr; // propagate on last attempt
+        // Wait 1s before retry
+        await new Promise(r => setTimeout(r, 1000));
       }
     }
 
-    // Final safety: unwrap nested questions key if still an object
-    if (!Array.isArray(questions) && questions && questions.questions) {
-      questions = questions.questions;
+    if (!aiText || aiText.trim().length < 10) {
+      throw lastGroqError || new Error('Groq returned empty response after all retries.');
     }
 
-    if (!Array.isArray(questions)) {
-      return res.status(500).json({ error: 'Groq response is not an array. Try again.' });
-    }
+    // ── 5. Extract & parse questions array
+    const rawArray = extractQuestionsFromText(aiText, topicClean);
 
-    // Validate & sanitize
-    const validated = [];
-    for (const q of questions) {
-      if (!q.question || !Array.isArray(q.options) || q.options.length !== 4 || !q.correctAnswer) {
-        console.warn('[AI QUIZ] Skipping invalid question:', JSON.stringify(q).slice(0, 100));
-        continue;
-      }
-      // Ensure correctAnswer is actually one of the options
-      const opts = q.options.map(o => String(o).trim());
-      const correct = String(q.correctAnswer).trim();
-      const matchOpt = opts.find(o => o.toLowerCase() === correct.toLowerCase());
-      if (!matchOpt) {
-        console.warn(`[AI QUIZ] Skipping question: correctAnswer not in options — "${correct}"`);
-        continue;
-      }
-      validated.push({
-        question:      String(q.question).trim(),
-        options:       opts,
-        correctAnswer: matchOpt,
-        difficulty:    ['easy', 'medium', 'hard'].includes(q.difficulty) ? q.difficulty : (difficulty !== 'mixed' ? difficulty : 'medium'),
-        topic:         String(q.topic || topic).trim(),
+    if (!rawArray) {
+      return res.status(500).json({
+        success: false,
+        error: 'AI returned invalid JSON. Please try again.',
+        hint: 'Try a simpler or more specific topic.',
+        rawPreview: aiText.slice(0, 300),
       });
+    }
+
+    if (!Array.isArray(rawArray) || rawArray.length === 0) {
+      return res.status(500).json({
+        success: false,
+        error: 'AI returned no questions. Please try again.',
+      });
+    }
+
+    console.log(`[AI QUIZ] PARSED JSON: ${rawArray.length} raw items received.`);
+
+    // ── 6. Validate each question strictly
+    const validated = [];
+    for (let i = 0; i < rawArray.length; i++) {
+      const q = rawArray[i];
+      const clean = validateQuestion(q, topicClean, difficulty);
+      if (clean) {
+        validated.push(clean);
+      } else {
+        console.warn(`[AI QUIZ] Question ${i + 1} failed validation:`, JSON.stringify(q).slice(0, 150));
+      }
     }
 
     const elapsed = Date.now() - startTime;
-    console.log(`[AI QUIZ] ✅ Done. ${validated.length}/${questions.length} valid questions in ${elapsed}ms. Model: ${usedModel}`);
+    console.log(`[AI QUIZ] ✅ Done. ${validated.length}/${rawArray.length} valid | ${elapsed}ms | model: ${usedModel}`);
 
     if (validated.length === 0) {
-      return res.status(500).json({ error: 'Groq generated 0 valid questions. Try a different topic.' });
+      return res.status(500).json({
+        success: false,
+        error: 'AI generated 0 valid questions. Try a different topic or lower the count.',
+      });
     }
 
-    res.json({ questions: validated, topic, courseName: courseName || '', difficulty, count: validated.length, model: usedModel, elapsed });
+    // ── 7. Success
+    return res.json({
+      success: true,
+      questions:  validated,
+      topic:      topicClean,
+      courseName: courseName || '',
+      difficulty,
+      count:      validated.length,
+      model:      usedModel,
+      elapsed,
+    });
 
   } catch (err) {
     const elapsed = Date.now() - startTime;
-    console.error(`[AI QUIZ] ❌ Fatal error after ${elapsed}ms: ${err.message}`);
+    console.error(`[AI QUIZ] FULL ERROR after ${elapsed}ms:`, err);
 
     let friendlyError = 'Quiz generation failed. Please try again.';
-    if (err.status === 401 || err.status === 403) {
+    const status = err.status || err.statusCode || 500;
+
+    if (status === 401 || status === 403) {
       friendlyError = 'Groq API key is invalid or unauthorized. Check GROQ_API_KEY in backend/.env';
-    } else if (err.status === 429) {
-      friendlyError = 'Groq API rate limit exceeded. Wait a moment and try again.';
-    } else if (err.status === 400) {
-      friendlyError = 'Groq rejected the request. Try a different topic or reduce question count.';
+    } else if (status === 429) {
+      friendlyError = 'Groq rate limit hit. Wait a moment then try again.';
+    } else if (status === 400) {
+      friendlyError = 'Groq rejected the request (400). Try a simpler topic or reduce question count.';
+    } else if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND') {
+      friendlyError = 'Cannot reach Groq API. Check your server network connection.';
     }
 
-    res.status(500).json({ error: friendlyError });
+    return res.status(500).json({
+      success: false,
+      error:   friendlyError,
+      message: err.message,
+      stack:   process.env.NODE_ENV !== 'production' ? err.stack : undefined,
+    });
   }
 });
 
