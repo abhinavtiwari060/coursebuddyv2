@@ -1,5 +1,13 @@
-importScripts('https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.8.1/firebase-messaging-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/12.12.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/12.12.0/firebase-messaging-compat.js');
+
+self.addEventListener('install', () => {
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
 
 firebase.initializeApp({
   apiKey: "AIzaSyDgqW-qu4H1hqTu2OcRoD_BaHjWmC25gsY",
@@ -17,7 +25,7 @@ messaging.onBackgroundMessage((payload) => {
   const title = payload.notification?.title || "New Notification";
   const options = {
     body: payload.notification?.body || "",
-    icon: "/icon-192.png"
+    icon: "/icon-192.svg"
   };
 
   self.registration.showNotification(title, options);

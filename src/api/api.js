@@ -9,6 +9,7 @@ const api = axios.create({
   baseURL: API_URL,
 });
 
+
 // Attach JWT token
 api.interceptors.request.use(
   (config) => {
@@ -44,7 +45,7 @@ export const authService = {
   login: (email, password) =>
     api.post("/api/auth/login", { email, password }).then((r) => r.data),
 
-  googleLogin: (name, email, avatar) => 
+  googleLogin: (name, email, avatar) =>
     api.post("/api/auth/google", { name, email, avatar }).then((r) => r.data),
 
   me: () => api.get("/api/auth/me").then((r) => r.data),

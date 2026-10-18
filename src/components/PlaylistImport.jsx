@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ListVideo, Download, Loader2, AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Youtube, Clock } from 'lucide-react';
 import { formatDuration } from '../utils/helpers';
 

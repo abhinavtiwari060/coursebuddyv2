@@ -71,6 +71,9 @@ export default function AdminCourseManager({ initialTab = 'courses', selectedCou
   const [formErrors, setFormErrors] = useState({});
   const [submittingCourse, setSubmittingCourse] = useState(false);
   const [actionSuccess, setActionSuccess] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [courseToDelete, setCourseToDelete] = useState(null);
+  const [deletingCourseId, setDeletingCourseId] = useState(null);
 
   // Initial load
   useEffect(() => {
@@ -167,18 +170,28 @@ export default function AdminCourseManager({ initialTab = 'courses', selectedCou
     }
   };
 
-  const handleDeleteCourse = async (course) => {
-    const warning = `Delete course "${course.name}"?\n\nWARNING: This will permanently delete this course and all associated playlists and video lessons.`;
-    if (!window.confirm(warning)) return;
+  const promptDeleteCourse = (course) => {
+    setCourseToDelete(course);
+    setActionError('');
+  };
+
+  const handleConfirmDeleteCourse = async () => {
+    if (!courseToDelete) return;
+    setDeletingCourseId(courseToDelete._id);
+    setActionError('');
 
     try {
-      await adminService.deleteCourseById(course._id);
-      setCourses(prev => prev.filter(c => c._id !== course._id));
-      setActionSuccess(`Course "${course.name}" and all linked content deleted.`);
-      setTimeout(() => setActionSuccess(''), 4000);
+      await adminService.deleteCourseById(courseToDelete._id);
+      setCourses(prev => prev.filter(c => c._id !== courseToDelete._id));
+      setActionSuccess(`Course "${courseToDelete.name}" and all linked content deleted successfully.`);
+      setTimeout(() => setActionSuccess(''), 5000);
+      setCourseToDelete(null);
+      loadCourses();
       loadPlaylists();
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to delete course');
+      setActionError(err.response?.data?.error || err.message || 'Failed to delete course');
+    } finally {
+      setDeletingCourseId(null);
     }
   };
 
@@ -474,8 +487,8 @@ export default function AdminCourseManager({ initialTab = 'courses', selectedCou
                       <Edit2 size={15} />
                     </button>
                     <button
-                      onClick={() => handleDeleteCourse(course)}
-                      className="p-1.5 text-red-600 hover:bg-red-50 rounded-xl border border-red-200 transition"
+                      onClick={() => promptDeleteCourse(course)}
+                      className="p-1.5 text-red-600 hover:bg-red-50 rounded-xl border border-red-200 transition cursor-pointer"
                       title="Delete Course and content"
                     >
                       <Trash2 size={15} />
@@ -541,7 +554,7 @@ export default function AdminCourseManager({ initialTab = 'courses', selectedCou
                     <option value="">-- Select an Existing Course --</option>
                     {courses.map(c => (
                       <option key={c._id} value={c._id}>
-                        {c.name} ({c.category || 'skills'})
+                        {c.name} ({c.category || 'skills'}{c.subcategory ? ` · ${c.subcategory}` : ''}) — ID: {String(c._id).slice(-4)}
                       </option>
                     ))}
                   </select>
@@ -1010,6 +1023,79 @@ export default function AdminCourseManager({ initialTab = 'courses', selectedCou
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* ─────────────────────────────────────────────────────────────
+          MODAL: CONFIRM DELETE COURSE
+         ───────────────────────────────────────────────────────────── */}
+      <Modal
+        isOpen={Boolean(courseToDelete)}
+        onClose={() => !deletingCourseId && setCourseToDelete(null)}
+        title="Confirm Course Deletion"
+        subtitle="Permanent removal of curriculum and linked playlists"
+        icon={<Trash2 size={20} className="text-red-600" />}
+        maxWidth="max-w-md"
+        closeOnEscape={!deletingCourseId}
+        closeOnBackdrop={!deletingCourseId}
+      >
+        <div className="space-y-4">
+          {actionError && (
+            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-xl flex items-center gap-2">
+              <AlertCircle size={15} />
+              <span>{actionError}</span>
+            </div>
+          )}
+
+          <div className="p-4 bg-red-50/60 border border-red-200 rounded-2xl">
+            <p className="text-[10px] text-[#78716C] mb-1 font-bold uppercase tracking-wider">
+              Course selected for deletion
+            </p>
+            <h4 className="text-base font-black text-[#431407]">
+              {courseToDelete?.name}
+            </h4>
+            <div className="flex items-center gap-2 mt-2 text-xs text-[#78716C] flex-wrap font-medium">
+              <span className="px-2 py-0.5 bg-white border border-[#FED7AA] rounded-md text-[11px] font-bold text-[#EA580C]">
+                {courseToDelete?.category || 'skills'}
+              </span>
+              {courseToDelete?.subcategory && (
+                <span>• {courseToDelete.subcategory}</span>
+              )}
+              <span>• {courseToDelete?.videoCount || 0} lessons</span>
+              <span className="text-[10px] text-slate-400 font-mono">ID: {courseToDelete?._id}</span>
+            </div>
+          </div>
+
+          <p className="text-xs text-[#78716C] leading-relaxed">
+            Are you sure you want to delete this course? All associated YouTube playlists linked to this specific curriculum ID will be removed. Other courses with identical names and unrelated student data will remain completely untouched.
+          </p>
+
+          <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#FED7AA]">
+            <button
+              type="button"
+              disabled={Boolean(deletingCourseId)}
+              onClick={() => setCourseToDelete(null)}
+              className="px-4 py-2 text-xs font-bold text-[#78716C] hover:bg-[#FFF7ED] rounded-xl transition cursor-pointer disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={Boolean(deletingCourseId)}
+              onClick={handleConfirmDeleteCourse}
+              className="px-5 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl transition flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
+            >
+              {deletingCourseId ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" /> Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 size={14} /> Delete Course
+                </>
+              )}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

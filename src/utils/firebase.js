@@ -57,12 +57,24 @@ export const requestForToken = async () => {
     let registration;
 
     if ("serviceWorker" in navigator) {
-      registration = await navigator.serviceWorker.getRegistration();
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      registration = registrations.find(
+        (r) =>
+          r.active?.scriptURL?.includes("firebase-messaging-sw") ||
+          r.installing?.scriptURL?.includes("firebase-messaging-sw") ||
+          r.waiting?.scriptURL?.includes("firebase-messaging-sw")
+      );
 
       if (!registration) {
         registration = await navigator.serviceWorker.register(
           "/firebase-messaging-sw.js"
         );
+      } else {
+        try {
+          await registration.update();
+        } catch {
+          // ignore network or offline error on update
+        }
       }
 
       console.log("✅ Service Worker Ready:", registration.scope);

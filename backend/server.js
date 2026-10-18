@@ -39,6 +39,15 @@ import WatchHistory from './models/WatchHistory.js';
 
 
 
+app.get("/api/health", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "StudyMate backend is running",
+    timestamp: new Date().toISOString(),
+    uptime: Math.floor(process.uptime()),
+  });
+});
+
 
 import fs from 'fs';
 import path from 'path';
@@ -62,7 +71,7 @@ try {
       });
     }
     console.log("🔥 Firebase Admin Initialized (via Environment Variables)");
-  // 2. Fall back to local file if it exists
+    // 2. Fall back to local file if it exists
   } else {
     const serviceAccount = JSON.parse(fs.readFileSync(path.join(__dirname, 'config', 'serviceAccountKey.json'), 'utf8'));
     if (!admin.apps.length) {
@@ -871,7 +880,7 @@ app.post('/api/auth/google', async (req, res) => {
           return res.status(403).json({ error: 'Registration limit reached. Please contact admin.' });
         }
       }
-      
+
       // Auto-signup
       const hashedPassword = await bcrypt.hash(email + process.env.JWT_SECRET, 10); // Dummy pass for google users
       const role = email === 'admin@studyflow.com' ? 'admin' : 'user';
@@ -901,7 +910,7 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
     const user = await User.findById(req.user.id).select('-password');
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (user.status === 'blocked') return res.status(403).json({ error: 'Account blocked' });
-    
+
     res.json({
       user: {
         id: user._id,
@@ -948,7 +957,7 @@ app.post('/api/admin/settings/max-users', authMiddleware, adminMiddleware, async
     const { maxUsers } = req.body;
     await Settings.findOneAndUpdate({ key: 'max_users' }, { value: maxUsers.toString() }, { upsert: true });
     res.json({ message: 'Max Users limit updated successfully' });
-  } catch(err) {
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -1200,16 +1209,26 @@ app.get('/api/courses', authMiddleware, async (req, res) => {
 app.get('/api/courses/my', authMiddleware, async (req, res) => {
   try {
     const userVideos = await Video.find({ userId: req.user.id, isPendingDelete: { $ne: true } }).select('course completed duration').lean();
-    const courseNames = [...new Set(userVideos.map(v => v.course).filter(Boolean))];
+    const userCourseNames = new Set(userVideos.map(v => v.course).filter(Boolean));
 
-    const userCourses = await Course.find({ userId: req.user.id, isPendingDelete: { $ne: true } }).lean();
-    for (const uc of userCourses) {
-      if (!courseNames.includes(uc.name)) courseNames.push(uc.name);
-    }
+    const userCourses = await Course.find({
+      $or: [
+        { userId: req.user.id },
+        { name: { $in: Array.from(userCourseNames) } }
+      ],
+      isPendingDelete: { $ne: true }
+    }).lean();
 
-    const courses = await Course.find({ name: { $in: courseNames }, isPendingDelete: { $ne: true } }).lean();
+    // Deduplicate by course _id to safely handle courses with identical names
+    const seen = new Set();
+    const uniqueCourses = userCourses.filter(c => {
+      const idStr = String(c._id);
+      if (seen.has(idStr)) return false;
+      seen.add(idStr);
+      return true;
+    });
 
-    const result = courses.map(c => {
+    const result = uniqueCourses.map(c => {
       const vids = userVideos.filter(v => v.course === c.name);
       const totalVideos = vids.length;
       const completedVideos = vids.filter(v => v.completed).length;
@@ -1233,9 +1252,7 @@ app.post('/api/courses', authMiddleware, async (req, res) => {
     const { name, category, subcategory, description, thumbnail } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'Course name is required' });
 
-    const existing = await Course.findOne({ name: name.trim(), userId: req.user.id });
-    if (existing) return res.status(400).json({ error: 'Course already exists' });
-
+    // Allow multiple courses with identical titles
     const course = new Course({
       name: name.trim(),
       category: category || 'skills',
@@ -1617,16 +1634,16 @@ app.get('/api/thoughts', authMiddleware, async (req, res) => {
 app.post('/api/thoughts', authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-    
+
     // Check if posted within last 24 hours
     const yesterday = new Date();
     yesterday.setHours(yesterday.getHours() - 24);
-    
-    const recentThought = await Thought.findOne({ 
+
+    const recentThought = await Thought.findOne({
       user_id: req.user.id,
       createdAt: { $gt: yesterday }
     });
-    
+
     if (recentThought) return res.status(403).json({ error: 'You can only post 1 thought per 24 hours.' });
 
     const expiresAt = new Date();
@@ -1713,7 +1730,7 @@ app.get('/api/admin/playlists', authMiddleware, async (req, res) => {
       hidden_by_users: { $ne: req.user.id }
     }).sort({ createdAt: -1 });
     res.json(playlists);
-  } catch(err) {
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -1724,7 +1741,7 @@ app.post('/api/admin/playlists', authMiddleware, adminMiddleware, async (req, re
     const playlist = new PlaylistSuggestion({ title, thumbnail, playlist_url, category });
     await playlist.save();
     res.json(playlist);
-  } catch(err) {
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -1736,7 +1753,7 @@ app.post('/api/admin/playlists/:id/hide', authMiddleware, async (req, res) => {
       $addToSet: { hidden_by_users: req.user.id }
     });
     res.json({ success: true });
-  } catch(err) {
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -1823,7 +1840,7 @@ app.post('/api/admin/push', authMiddleware, adminMiddleware, async (req, res) =>
     };
 
     const response = await admin.messaging().sendEachForMulticast(message);
-    
+
     // Automatically clean up old/invalid tokens from the database!
     if (response.failureCount > 0) {
       const failedTokens = [];
@@ -1948,8 +1965,8 @@ app.put('/api/admin/users/:id/approval', authMiddleware, adminMiddleware, async 
     const { approvalStatus } = req.body;
     console.log(`[ADMIN] Setting approval status for ${req.params.id} to ${approvalStatus}`);
     const u = await User.findByIdAndUpdate(
-      req.params.id, 
-      { approvalStatus, approvalTimestamp: new Date() }, 
+      req.params.id,
+      { approvalStatus, approvalTimestamp: new Date() },
       { new: true }
     );
     console.log(`[DATABASE] Approval updated for ${u.email}`);
@@ -1985,13 +2002,13 @@ app.put('/api/admin/bug-reports/:id', authMiddleware, adminMiddleware, async (re
   try {
     const { status } = req.body;
     const report = await BugReport.findByIdAndUpdate(req.params.id, { status }, { new: true }).populate('userId', 'name email');
-    
+
     if (report) {
-       await Notification.create({
-         userId: report.userId._id,
-         title: 'Bug Report Update',
-         body: `Your bug report "${report.title}" is now marked as ${status}.`
-       });
+      await Notification.create({
+        userId: report.userId._id,
+        title: 'Bug Report Update',
+        body: `Your bug report "${report.title}" is now marked as ${status}.`
+      });
     }
 
     res.json(report);
@@ -2128,12 +2145,12 @@ app.get('/api/admin/youtube/playlist', authMiddleware, adminMiddleware, async (r
       for (const item of detailRes.data.items || []) {
         const vid = videos.find(v => v.videoId === item.id);
         if (vid) {
-          vid.duration      = parseDuration(item.contentDetails?.duration);
-          vid.channelTitle  = item.snippet?.channelTitle || '';
+          vid.duration = parseDuration(item.contentDetails?.duration);
+          vid.channelTitle = item.snippet?.channelTitle || '';
           // Use the best available thumbnail
-          vid.thumbnail     = item.snippet?.thumbnails?.maxres?.url
-                           || item.snippet?.thumbnails?.high?.url
-                           || vid.thumbnail;
+          vid.thumbnail = item.snippet?.thumbnails?.maxres?.url
+            || item.snippet?.thumbnails?.high?.url
+            || vid.thumbnail;
         }
       }
     }
@@ -2144,10 +2161,10 @@ app.get('/api/admin/youtube/playlist', authMiddleware, adminMiddleware, async (r
     });
     const playlistName = plRes.data.items?.[0]?.snippet?.title || 'Imported Playlist';
 
-    res.json({ 
-      playlistId, 
-      playlistName, 
-      videos: videos.sort((a, b) => (a.position || 0) - (b.position || 0)) 
+    res.json({
+      playlistId,
+      playlistName,
+      videos: videos.sort((a, b) => (a.position || 0) - (b.position || 0))
     });
   } catch (err) {
     console.error('YouTube API error:', err.response?.data || err.message);
@@ -2276,9 +2293,7 @@ app.post('/api/admin/courses', authMiddleware, adminMiddleware, async (req, res)
     const { name, category, subcategory, description, thumbnail } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'Course name is required' });
 
-    const existing = await Course.findOne({ name: name.trim(), isPendingDelete: { $ne: true } });
-    if (existing) return res.status(400).json({ error: 'A course with this name already exists' });
-
+    // Allow multiple courses with identical titles
     const course = await Course.create({
       name: name.trim(),
       category: category || 'skills',
@@ -2308,9 +2323,17 @@ app.put('/api/admin/courses/:id', authMiddleware, adminMiddleware, async (req, r
     if (thumbnail !== undefined) course.thumbnail = thumbnail.trim();
     await course.save();
 
+    // Only update playlists and videos specifically linked to this course ID
     if (name && name.trim() !== oldName) {
       await Playlist.updateMany({ courseId: course._id }, { $set: { courseName: course.name } });
-      await Video.updateMany({ course: oldName }, { $set: { course: course.name } });
+      const linkedPlaylists = await Playlist.find({ courseId: course._id }).select('playlistId');
+      const playlistIds = linkedPlaylists.map(p => p.playlistId);
+      if (playlistIds.length > 0) {
+        await Video.updateMany({ playlistId: { $in: playlistIds } }, { $set: { course: course.name } });
+      }
+      if (course.userId) {
+        await Video.updateMany({ userId: course.userId, course: oldName }, { $set: { course: course.name } });
+      }
     }
 
     res.json(course);
@@ -2325,9 +2348,23 @@ app.delete('/api/admin/courses/:id', authMiddleware, adminMiddleware, async (req
     const course = await Course.findById(req.params.id);
     if (!course) return res.status(404).json({ error: 'Course not found' });
 
-    await Course.findByIdAndDelete(req.params.id);
+    // Find linked playlists for this specific course ID
+    const linkedPlaylists = await Playlist.find({ courseId: course._id }).select('playlistId');
+    const playlistIds = linkedPlaylists.map(p => p.playlistId);
+
+    // Delete linked playlists for this course
     await Playlist.deleteMany({ courseId: course._id });
-    await Video.deleteMany({ course: course.name });
+
+    // Only delete videos explicitly linked to this course's playlists or created by this course owner with this course name
+    if (playlistIds.length > 0) {
+      await Video.deleteMany({ playlistId: { $in: playlistIds } });
+    }
+    if (course.userId) {
+      await Video.deleteMany({ userId: course.userId, course: course.name });
+    }
+
+    // Delete the course itself
+    await Course.findByIdAndDelete(req.params.id);
 
     res.json({ message: 'Course and linked playlists deleted successfully' });
   } catch (err) {
@@ -2390,20 +2427,20 @@ app.delete('/api/admin/course/:courseId', authMiddleware, adminMiddleware, async
 app.delete('/api/admin/courses/by-name/:name', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { name } = req.params;
-    
+
     // Soft delete courses
     const courseRes = await Course.updateMany(
       { name: name },
       { $set: { isPendingDelete: true } }
     );
-    
+
     // Soft delete videos
     const videoRes = await Video.updateMany(
       { course: name },
       { $set: { isPendingDelete: true } }
     );
 
-    res.json({ 
+    res.json({
       message: `Course "${name}" soft-deleted for all users.`,
       coursesAffected: courseRes.modifiedCount,
       videosAffected: videoRes.modifiedCount
@@ -2567,19 +2604,19 @@ app.post('/api/admin/playlists/import', authMiddleware, adminMiddleware, async (
     let nextPageToken = '';
     do {
       const itemsRes = await axios.get('https://www.googleapis.com/youtube/v3/playlistItems', {
-        params: { 
-          part: 'snippet,contentDetails', 
-          maxResults: 50, 
-          playlistId, 
+        params: {
+          part: 'snippet,contentDetails',
+          maxResults: 50,
+          playlistId,
           pageToken: nextPageToken || undefined,
-          key: apiKey 
+          key: apiKey
         }
       });
       const data = itemsRes.data;
       nextPageToken = data.nextPageToken || '';
 
       const currentBatchVideoIds = (data.items || []).map(i => i.contentDetails.videoId);
-      
+
       // Fetch durations for this batch
       let durationMap = {};
       if (currentBatchVideoIds.length > 0) {
@@ -2601,7 +2638,7 @@ app.post('/api/admin/playlists/import', authMiddleware, adminMiddleware, async (
         channelTitle: item.snippet.videoOwnerChannelTitle,
         publishedAt: item.snippet.publishedAt,
       }));
-      
+
       videos = [...videos, ...batchVideos];
     } while (nextPageToken);
 
@@ -2781,7 +2818,7 @@ app.get('/api/admin/youtube/search-playlists', authMiddleware, adminMiddleware, 
     });
 
     const playlistIds = (searchRes.data.items || []).map(i => i.id.playlistId).join(',');
-    
+
     // Fetch extra detail (video count) for the found playlists
     let detailMap = {};
     if (playlistIds) {
@@ -2832,7 +2869,7 @@ app.post('/api/progress/save', authMiddleware, async (req, res) => {
 
     if (lastVideoId && mongoose.Types.ObjectId.isValid(lastVideoId)) progress.lastVideoId = lastVideoId;
     if (watchPosition !== undefined) progress.watchPosition = watchPosition;
-    
+
     if (watchedVideoId && mongoose.Types.ObjectId.isValid(watchedVideoId)) {
       if (!progress.watchedVideos.map(String).includes(String(watchedVideoId))) {
         progress.watchedVideos.push(watchedVideoId);
@@ -3051,7 +3088,7 @@ app.post('/api/admin/quiz/assign', authMiddleware, adminMiddleware, async (req, 
       await assignment.save();
     }
     res.json(assignment);
-  } catch(err) {
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -3061,7 +3098,7 @@ app.post('/api/admin/quiz/revoke', authMiddleware, adminMiddleware, async (req, 
     const { userId, quizId } = req.body;
     await QuizAssignment.findOneAndUpdate({ userId, quizId }, { accessStatus: 'revoked' });
     res.json({ message: 'Revoked' });
-  } catch(err) {
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -3070,7 +3107,7 @@ app.get('/api/admin/quiz/:quizId/assignments', authMiddleware, adminMiddleware, 
   try {
     const assignments = await QuizAssignment.find({ quizId: req.params.quizId }).populate('userId', 'name email');
     res.json(assignments);
-  } catch(err) {
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -3083,15 +3120,15 @@ app.get('/api/quiz/assigned', authMiddleware, async (req, res) => {
     const assignedQuizzes = assignments.map(a => a.quizId).filter(q => q !== null);
 
     // 2. Get globally active quizzes (that aren't already in the assigned list)
-    const activeQuizzes = await Quiz.find({ 
-      status: 'active', 
-      _id: { $nin: assignedQuizzes.map(q => q._id) } 
+    const activeQuizzes = await Quiz.find({
+      status: 'active',
+      _id: { $nin: assignedQuizzes.map(q => q._id) }
     }).lean();
 
     // Combine them
     const allQuizzes = [...assignedQuizzes, ...activeQuizzes];
     res.json(allQuizzes);
-  } catch(err) {
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -3103,7 +3140,7 @@ app.get('/api/quiz/active', authMiddleware, async (req, res) => {
     // Priority 1: Explicitly assigned active quiz
     const assignments = await QuizAssignment.find({ userId: req.user.id, accessStatus: 'active' }).populate('quizId');
     let activeQuiz = assignments.map(a => a.quizId).find(q => q && q.status === 'active');
-    
+
     // Priority 2: Any globally active quiz if no specific assignment is active
     if (!activeQuiz) {
       activeQuiz = await Quiz.findOne({ status: 'active' }).sort({ createdAt: -1 });
@@ -3130,7 +3167,7 @@ app.get('/api/quiz/:id', authMiddleware, async (req, res) => {
 
     // Check if user already attempted (and retry not allowed)
     const attempt = await QuizAttempt.findOne({ userId: req.user.id, quizId: quiz._id });
-    
+
     res.json({ quiz, questions, alreadyAttempted: !!attempt });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -3365,11 +3402,11 @@ function validateQuestion(q, fallbackTopic, fallbackDifficulty) {
     : (fallbackDifficulty !== 'mixed' ? fallbackDifficulty : 'medium');
 
   return {
-    question:      String(q.question).trim(),
-    options:       opts,
+    question: String(q.question).trim(),
+    options: opts,
     correctAnswer: matchedOpt,
     difficulty,
-    topic:         String(q.topic || fallbackTopic).trim(),
+    topic: String(q.topic || fallbackTopic).trim(),
   };
 }
 
@@ -3394,10 +3431,10 @@ app.post('/api/quiz', authMiddleware, adminMiddleware, async (req, res) => {
       const questionDocs = questions.map((q, idx) => ({
         quizId: quiz._id,
         questionText: q.question || q.questionText,
-        option1:      q.options ? q.options[0] : q.option1,
-        option2:      q.options ? q.options[1] : q.option2,
-        option3:      q.options ? q.options[2] : q.option3,
-        option4:      q.options ? q.options[3] : q.option4,
+        option1: q.options ? q.options[0] : q.option1,
+        option2: q.options ? q.options[1] : q.option2,
+        option3: q.options ? q.options[2] : q.option3,
+        option4: q.options ? q.options[3] : q.option4,
         correctAnswer: q.correctAnswer,
         order: idx + 1,
       }));
@@ -3438,10 +3475,10 @@ app.post('/api/admin/ai-quiz/generate', authMiddleware, adminMiddleware, async (
     }
 
     // ── 3. Build prompt
-    const topicClean  = String(topic).trim();
-    const countNum    = Math.min(Math.max(Number(count) || 10, 1), 30);
-    const courseCtx   = courseName ? ` for the course "${String(courseName).trim()}"` : '';
-    const diffRule    = difficulty === 'mixed'
+    const topicClean = String(topic).trim();
+    const countNum = Math.min(Math.max(Number(count) || 10, 1), 30);
+    const courseCtx = courseName ? ` for the course "${String(courseName).trim()}"` : '';
+    const diffRule = difficulty === 'mixed'
       ? 'Vary difficulty: roughly 1/3 easy, 1/3 medium, 1/3 hard.'
       : `All questions must use difficulty "${difficulty}".`;
 
@@ -3534,12 +3571,12 @@ Rules:
     // ── 7. Success
     return res.json({
       success: true,
-      questions:  validated,
-      topic:      topicClean,
+      questions: validated,
+      topic: topicClean,
       courseName: courseName || '',
       difficulty,
-      count:      validated.length,
-      model:      usedModel,
+      count: validated.length,
+      model: usedModel,
       elapsed,
     });
 
@@ -3562,9 +3599,9 @@ Rules:
 
     return res.status(500).json({
       success: false,
-      error:   friendlyError,
+      error: friendlyError,
       message: err.message,
-      stack:   process.env.NODE_ENV !== 'production' ? err.stack : undefined,
+      stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined,
     });
   }
 });
@@ -3576,6 +3613,10 @@ const PORT = process.env.PORT || 5000;
 mongoose.connect(process.env.MONGO_URI, { family: 4 })
   .then(() => {
     console.log("✅ MongoDB connected");
+    // Ensure duplicate course titles are permitted (safely drop legacy unique indexes)
+    Course.collection.dropIndex('name_1').catch(() => { });
+    Course.collection.dropIndex('userId_1_name_1').catch(() => { });
+    Course.collection.dropIndex('name_1_userId_1').catch(() => { });
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${PORT} with Socket.IO enabled`);
     });
