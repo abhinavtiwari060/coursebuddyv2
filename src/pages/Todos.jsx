@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import Modal from '../components/Modal';
 import { todoService } from '../api/api';
 import { 
   CheckSquare, 
@@ -365,112 +366,118 @@ export default function Todos() {
       </main>
 
       {/* Create / Edit Modal */}
-      {isModalOpen && (
-        <div className="clay-modal-backdrop">
-          <div className="clay-modal-content">
-            <h3 className="text-xl font-black text-[#431407] mb-1">
-              {editingTodo ? 'Edit Task' : 'Create New Task'}
-            </h3>
-            <p className="text-xs text-[#78716C] mb-4">
-              Keep your study goals small, actionable, and time-bound.
-            </p>
-
-            {formError && (
-              <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold">
-                {formError}
-              </div>
-            )}
-
-            <form onSubmit={handleSave} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-[#431407] mb-1">
-                  Task Title *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Complete Electrostatics Video 3 & Notes"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="clay-input"
-                  maxLength={300}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-[#431407] mb-1">
-                  Description (Optional)
-                </label>
-                <textarea
-                  rows={3}
-                  placeholder="Additional context or checklist items..."
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="clay-input"
-                  maxLength={2000}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-[#431407] mb-1">
-                    Due Date
-                  </label>
-                  <input
-                    type="date"
-                    value={formData.dueDate}
-                    onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-                    className="clay-input"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-[#431407] mb-1">
-                    Learning Path
-                  </label>
-                  <select
-                    value={formData.category}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    className="clay-input"
-                  >
-                    {CATEGORY_OPTIONS.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#FED7AA]">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="clay-btn-subtle text-xs"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={formSubmitting}
-                  className="clay-btn-primary text-xs px-5 py-2.5 flex items-center gap-1.5"
-                >
-                  {formSubmitting ? (
-                    <>
-                      <Loader2 size={14} className="animate-spin" />
-                      Saving...
-                    </>
-                  ) : editingTodo ? (
-                    'Save Changes'
-                  ) : (
-                    'Create Task'
-                  )}
-                </button>
-              </div>
-            </form>
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingTodo(null);
+          setFormError('');
+        }}
+        title={editingTodo ? 'Edit Task' : 'Create New Task'}
+        subtitle="Keep your study goals small, actionable, and time-bound."
+        icon={<CheckSquare size={20} className="text-[#EA580C]" />}
+        isDirty={Boolean(formData.title.trim() || formData.description.trim())}
+        maxWidth="max-w-lg"
+      >
+        {formError && (
+          <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold">
+            {formError}
           </div>
-        </div>
-      )}
+        )}
+
+        <form onSubmit={handleSave} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-[#431407] mb-1">
+              Task Title *
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="e.g. Complete Electrostatics Video 3 & Notes"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              className="clay-input"
+              maxLength={300}
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-[#431407] mb-1">
+              Description (Optional)
+            </label>
+            <textarea
+              rows={3}
+              placeholder="Additional context or checklist items..."
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              className="clay-input"
+              maxLength={2000}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-[#431407] mb-1">
+                Due Date
+              </label>
+              <input
+                type="date"
+                value={formData.dueDate}
+                onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+                className="clay-input"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-[#431407] mb-1">
+                Learning Path
+              </label>
+              <select
+                value={formData.category}
+                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                className="clay-input"
+              >
+                {CATEGORY_OPTIONS.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#FED7AA]">
+            <button
+              type="button"
+              onClick={() => {
+                setIsModalOpen(false);
+                setEditingTodo(null);
+                setFormError('');
+              }}
+              className="clay-btn-subtle text-xs"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={formSubmitting}
+              className="clay-btn-primary text-xs px-5 py-2.5 flex items-center gap-1.5"
+            >
+              {formSubmitting ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Saving...
+                </>
+              ) : editingTodo ? (
+                'Save Changes'
+              ) : (
+                'Create Task'
+              )}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       <Footer />
     </div>

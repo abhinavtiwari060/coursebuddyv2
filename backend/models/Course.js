@@ -11,6 +11,7 @@ const courseSchema = new mongoose.Schema({
   },
   subcategory: { type: String, default: '' },
   description: { type: String, default: '' },
+  thumbnail: { type: String, default: '' },
   isCompleted: { type: Boolean, default: false },
   completedAt: { type: Date },
   isPendingDelete: { type: Boolean, default: false },

@@ -1,49 +1,45 @@
 import { useState, useEffect } from 'react';
-import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+import { Link, useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import CategoryOnboarding from '../components/CategoryOnboarding';
-import TodoSummary from '../components/TodoSummary';
-import Pomodoro from '../components/Pomodoro';
-import AddCourseForm from '../components/AddCourseForm';
+import Modal from '../components/Modal';
 import AddVideoForm from '../components/AddVideoForm';
-import VideoCard from '../components/VideoCard';
-import FilterBar from '../components/FilterBar';
-import Quotes from '../components/Quotes';
-import Badges from '../components/Badges';
+import AddCourseForm from '../components/AddCourseForm';
 import PlaylistImport from '../components/PlaylistImport';
-import CalendarView from '../components/CalendarView';
-import CourseProgress from '../components/CourseProgress';
-
-import { videoService, courseService, streakService, watchService, leaderboardService } from '../api/api';
+import {
+  courseService,
+  videoService,
+  streakService,
+  watchService,
+  leaderboardService,
+} from '../api/api';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate, Link } from 'react-router-dom';
 import { formatDuration } from '../utils/helpers';
-
-import { 
-  LayoutDashboard, 
-  BookOpen, 
-  Trophy, 
-  MessageSquare, 
-  PlayCircle, 
-  Clock, 
-  CheckCircle2, 
-  Flame, 
-  Sparkles, 
-  ArrowRight, 
-  Plus, 
-  Search, 
-  Filter,
-  BarChart2,
-  Calendar,
+import {
+  Clock,
+  CheckCircle2,
+  Flame,
+  Trophy,
+  PlayCircle,
+  ArrowRight,
+  BookOpen,
+  MessageSquare,
+  CheckSquare,
+  Grid,
+  Sparkles,
   Layers,
-  GraduationCap
+  ChevronRight,
+  Compass,
+  Video,
+  ListVideo,
+  Plus
 } from 'lucide-react';
 
 const CATEGORY_MAP = {
-  'government-exams': 'Government Exam Preparation',
-  'iit-neet': 'IIT / NEET Preparation',
-  'skills': 'Skills & Career Development',
+  'government-exams': 'Government Exams',
+  'iit-neet': 'IIT / NEET',
+  'skills': 'Skills & Career',
   'other': 'General Learning',
 };
 
@@ -51,53 +47,96 @@ export default function Home() {
   const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
 
-  const [courses, setCourses] = useState([]);
+  // Data states
+  const [loading, setLoading] = useState(true);
+  const [myCourses, setMyCourses] = useState([]);
+  const [recommendedCourses, setRecommendedCourses] = useState([]);
   const [videos, setVideos] = useState([]);
   const [streak, setStreak] = useState({ count: 0, lastDate: null });
-  const [watchStats, setWatchStats] = useState({ todaySeconds: 0, allTimeSeconds: 0, completedVideosCount: 0, lastWatched: null });
+  const [watchStats, setWatchStats] = useState({
+    todaySeconds: 0,
+    allTimeSeconds: 0,
+    completedVideosCount: 0,
+    lastWatched: null,
+  });
   const [myLeaderboardRank, setMyLeaderboardRank] = useState(null);
 
-  // Tabs for student view
-  const [activeTab, setActiveTab] = useState('study'); // 'study', 'courses', 'analytics', 'planner'
-  const [filters, setFilters] = useState({ search: '', course: 'All', status: 'Pending', platform: 'All' });
-  const [selectedCourse, setSelectedCourse] = useState(null);
-
-  // Modals
-  const [showAddCourse, setShowAddCourse] = useState(false);
+  // Modals state
   const [showAddVideo, setShowAddVideo] = useState(false);
+  const [showAddCourse, setShowAddCourse] = useState(false);
   const [showPlaylistImport, setShowPlaylistImport] = useState(false);
+  const [isVideoDirty, setIsVideoDirty] = useState(false);
+  const [isCourseDirty, setIsCourseDirty] = useState(false);
+  const [isPlaylistDirty, setIsPlaylistDirty] = useState(false);
+
+  // Modal action handlers
+  const handleAddVideo = async (v) => {
+    try {
+      const data = await videoService.create(v);
+      setVideos((prev) => [data, ...prev]);
+      setShowAddVideo(false);
+      setIsVideoDirty(false);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to add video');
+    }
+  };
+
+  const handleAddCourse = async (c) => {
+    try {
+      const data = await courseService.create(c.name);
+      setMyCourses((prev) => [...prev, data]);
+      setRecommendedCourses((prev) => [...prev, data]);
+      setShowAddCourse(false);
+      setIsCourseDirty(false);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to add course');
+    }
+  };
 
   useEffect(() => {
-    if (!user) { navigate('/login'); return; }
-    if (user.role === 'admin') { navigate('/admin'); return; }
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    if (user.role === 'admin') {
+      navigate('/admin');
+      return;
+    }
 
-    let isCancelled = false;
+    let isMounted = true;
 
-    const loadData = async () => {
+    const fetchDashboardData = async () => {
+      setLoading(true);
       try {
-        const [vids, crs, strk, wStats, lb] = await Promise.all([
+        const [myCrs, allCrs, vids, strk, wStats, lb] = await Promise.all([
+          courseService.getMy().catch(() => []),
+          courseService.getAll(user?.category ? { category: user.category } : {}).catch(() => []),
           videoService.getAll().catch(() => []),
-          courseService.getAll().catch(() => []),
           streakService.get().catch(() => null),
-          watchService.getStats().catch(() => ({ todaySeconds: 0, allTimeSeconds: 0, completedVideosCount: 0 })),
+          watchService.getStats().catch(() => ({ todaySeconds: 0, allTimeSeconds: 0, completedVideosCount: 0, lastWatched: null })),
           leaderboardService.get('weekly').catch(() => null),
         ]);
 
-        if (isCancelled) return;
+        if (!isMounted) return;
 
-        setVideos(vids || []);
-        setCourses((crs || []).map((c) => ({ id: c._id, name: c.name, category: c.category })));
-        if (strk) setStreak({ count: strk.currentStreak, lastDate: strk.lastActiveDate });
+        setMyCourses(Array.isArray(myCrs) ? myCrs : []);
+        setRecommendedCourses(Array.isArray(allCrs) ? allCrs : []);
+        setVideos(Array.isArray(vids) ? vids : []);
+        if (strk) setStreak({ count: strk.currentStreak || 0, lastDate: strk.lastActiveDate });
         if (wStats) setWatchStats(wStats);
         if (lb && lb.currentUserRank) setMyLeaderboardRank(lb.currentUserRank);
       } catch (err) {
-        if (!isCancelled) console.error('[Dashboard] Load failed:', err);
+        console.error('[Dashboard] Failed to fetch dashboard data:', err);
+      } finally {
+        if (isMounted) setLoading(false);
       }
     };
 
-    loadData();
-    return () => { isCancelled = true; };
-  }, [user?._id]);
+    fetchDashboardData();
+    return () => {
+      isMounted = false;
+    };
+  }, [user?._id, user?.category, navigate]);
 
   const getTimeGreeting = () => {
     const hr = new Date().getHours();
@@ -106,419 +145,636 @@ export default function Home() {
     return 'Good evening';
   };
 
-  const handleAddCourse = async (c) => {
-    try {
-      const data = await courseService.create(c.name);
-      setCourses((prev) => [...prev, { id: data._id, name: data.name }]);
-      setShowAddCourse(false);
-    } catch (err) {
-      alert(err.response?.data?.error || 'Failed to add course');
-    }
-  };
-
-  const handleAddVideo = async (v) => {
-    try {
-      const data = await videoService.create(v);
-      setVideos((prev) => [data, ...prev]);
-      setShowAddVideo(false);
-    } catch (err) {
-      alert(err.response?.data?.error || 'Failed to add video');
-    }
-  };
-
-  const handleToggleComplete = async (v) => {
-    try {
-      if (v.completed) {
-        await videoService.markPending(v._id);
-        setVideos((prev) => prev.map((item) => (item._id === v._id ? { ...item, completed: false } : item)));
-      } else {
-        await videoService.markComplete(v._id);
-        setVideos((prev) => prev.map((item) => (item._id === v._id ? { ...item, completed: true } : item)));
-      }
-    } catch (err) {
-      console.error('Toggle complete failed:', err);
-    }
-  };
-
-  const handleDeleteVideo = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this video?')) return;
-    try {
-      await videoService.delete(id);
-      setVideos((prev) => prev.filter((v) => v._id !== id));
-    } catch (err) {
-      console.error('Delete failed:', err);
-    }
-  };
-
-  const onDragEnd = async (result) => {
-    if (!result.destination) return;
-    const items = Array.from(filteredVideos);
-    const [reorderedItem] = items.splice(result.source.index, 1);
-    items.splice(result.destination.index, 0, reorderedItem);
-
-    const orders = items.map((item, index) => ({ id: item._id, order: index }));
-    try {
-      await videoService.reorder(orders);
-      setVideos((prev) =>
-        prev.map((v) => {
-          const match = orders.find((o) => o.id === v._id);
-          return match ? { ...v, order: match.order } : v;
-        })
-      );
-    } catch (err) {
-      console.error('Reorder error:', err);
-    }
-  };
-
-  // Find Continue Learning video
+  // Determine Continue Learning target video
   const continueVideo = watchStats.lastWatched
-    ? videos.find((v) => v.youtubeVideoId === watchStats.lastWatched.videoId || v._id === watchStats.lastWatched.videoId)
+    ? videos.find(
+        (v) =>
+          v.youtubeVideoId === watchStats.lastWatched.videoId ||
+          v._id === watchStats.lastWatched.videoId
+      ) || videos.find((v) => !v.completed) || videos[0]
     : videos.find((v) => !v.completed) || videos[0];
 
-  // Filtered videos for study table
-  const filteredVideos = videos.filter((v) => {
-    const matchSearch = (v.title || '').toLowerCase().includes(filters.search.toLowerCase());
-    const matchCourse = filters.course === 'All' || v.course === filters.course || v.courseId === filters.course;
-    const matchStatus =
-      filters.status === 'All' ||
-      (filters.status === 'Completed' && v.completed) ||
-      (filters.status === 'Pending' && !v.completed);
-    const matchPlatform = filters.platform === 'All' || v.platform === filters.platform;
-    return matchSearch && matchCourse && matchStatus && matchPlatform;
-  });
+  const totalVideos = videos.length;
+  const completedVideos = videos.filter((v) => v.completed).length;
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#FFF7ED]">
+    <div className="min-h-screen flex flex-col bg-[#FFF7ED] text-[#431407]">
       <Navbar />
 
       {/* Category Onboarding Modal if student category is not set */}
-      {user && !user.category && (
-        <CategoryOnboarding onComplete={() => refreshUser()} />
+      {user && !user.category && showCategoryOnboarding && (
+        <CategoryOnboarding
+          onComplete={() => {
+            setShowCategoryOnboarding(false);
+            refreshUser();
+          }}
+          onClose={() => setShowCategoryOnboarding(false)}
+        />
       )}
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Top Greeting & Category Header */}
-        <div className="clay-card bg-white p-6 sm:p-8 mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8">
+        
+        {/* ─────────────────────────────────────────────────────────────
+            1. COMPACT WELCOME SECTION
+            Student's name and selected learning category
+           ───────────────────────────────────────────────────────────── */}
+        <section className="clay-card bg-white border border-[#FED7AA] rounded-2xl p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
           <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FFF7ED] text-[#C2410C] border border-[#FED7AA] text-xs font-bold uppercase tracking-wider mb-2">
-              <Sparkles size={13} className="text-[#EA580C]" /> Learning Track
+            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+              <span className="text-xs font-bold text-[#78716C]">
+                {getTimeGreeting()},
+              </span>
+              <h1 className="text-xl sm:text-2xl font-black text-[#431407] tracking-tight">
+                {user?.name || 'Student'}
+              </h1>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-[#431407] tracking-tight">
-              {getTimeGreeting()}, {user?.name || 'Student'}!
-            </h1>
-            <p className="text-xs sm:text-sm text-[#78716C] mt-1 flex items-center gap-2">
-              <span>Primary Path: <strong className="text-[#EA580C]">{CATEGORY_MAP[user?.category] || 'Custom Path'}</strong></span>
+            <div className="flex items-center gap-2 text-xs font-semibold text-[#78716C] flex-wrap">
+              <span>Primary Category:</span>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#FFF7ED] text-[#EA580C] border border-[#FED7AA] text-[11px] font-bold">
+                <Sparkles size={11} className="text-[#EA580C]" />
+                {CATEGORY_MAP[user?.category] || 'General Curriculum'}
+              </span>
               <span>•</span>
-              <Link to="/categories" className="text-xs font-semibold text-[#C2410C] hover:underline">
-                Explore All Paths
+              <Link
+                to="/categories"
+                className="text-xs font-bold text-[#EA580C] hover:underline"
+              >
+                Change Track
               </Link>
-            </p>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <Link
-              to="/chat"
-              className="clay-btn-secondary text-xs px-4 py-2.5 flex items-center gap-2"
-            >
-              <MessageSquare size={15} /> Category Chat
-            </Link>
-            <Link
-              to="/todos"
-              className="clay-btn-secondary text-xs px-4 py-2.5 flex items-center gap-2"
-            >
-              <CheckCircle2 size={15} /> Study Tasks
-            </Link>
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => setShowAddVideo(true)}
-              className="clay-btn-primary text-xs px-4 py-2.5 flex items-center gap-1.5"
+              className="clay-btn-primary text-xs px-3.5 py-2 flex items-center gap-1.5 shadow-sm"
+              title="Add a video lesson"
             >
-              <Plus size={15} /> Add Video
+              <Plus size={14} /> Add Video
             </button>
-          </div>
-        </div>
-
-        {/* 4 Stat Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-          <div className="clay-card p-4 sm:p-5 bg-white">
-            <div className="flex items-center gap-2 text-[#78716C] text-xs font-bold uppercase mb-1">
-              <Clock size={15} className="text-[#EA580C]" /> Today's Study
+            <button
+              onClick={() => setShowAddCourse(true)}
+              className="clay-btn-secondary text-xs px-3.5 py-2 flex items-center gap-1.5"
+              title="Create a new course"
+            >
+              <Plus size={14} /> New Course
+            </button>
+            <button
+              onClick={() => setShowPlaylistImport(true)}
+              className="clay-btn-secondary text-xs px-3.5 py-2 flex items-center gap-1.5"
+              title="Import YouTube playlist"
+            >
+              <ListVideo size={14} /> Import Playlist
+            </button>
+            <div className="flex items-center gap-2 text-xs text-[#78716C] bg-[#FFF7ED] px-3.5 py-2 rounded-xl border border-[#FED7AA]">
+              <Clock size={14} className="text-[#EA580C]" />
+              <span>
+                All-Time Focus: <strong className="text-[#431407]">{formatDuration(watchStats.allTimeSeconds || 0)}</strong>
+              </span>
             </div>
-            <p className="text-xl sm:text-2xl font-black text-[#431407]">
-              {formatDuration(watchStats.todaySeconds || 0)}
-            </p>
-            <span className="text-[10px] text-[#78716C]">Verified playback time</span>
           </div>
+        </section>
 
-          <div className="clay-card p-4 sm:p-5 bg-white">
-            <div className="flex items-center gap-2 text-[#78716C] text-xs font-bold uppercase mb-1">
-              <CheckCircle2 size={15} className="text-green-600" /> Videos Done
-            </div>
-            <p className="text-xl sm:text-2xl font-black text-[#431407]">
-              {videos.filter((v) => v.completed).length} / {videos.length}
-            </p>
-            <span className="text-[10px] text-[#78716C]">
-              {videos.length > 0 ? Math.round((videos.filter((v) => v.completed).length / videos.length) * 100) : 0}% completion
-            </span>
-          </div>
-
-          <div className="clay-card p-4 sm:p-5 bg-white">
-            <div className="flex items-center gap-2 text-[#78716C] text-xs font-bold uppercase mb-1">
-              <Flame size={15} className="text-[#EA580C]" /> Day Streak
-            </div>
-            <p className="text-xl sm:text-2xl font-black text-[#EA580C]">
-              {streak.count} {streak.count === 1 ? 'Day' : 'Days'}
-            </p>
-            <span className="text-[10px] text-[#78716C]">Consistency score</span>
-          </div>
-
-          <div className="clay-card p-4 sm:p-5 bg-white">
-            <div className="flex items-center gap-2 text-[#78716C] text-xs font-bold uppercase mb-1">
-              <Trophy size={15} className="text-[#C2410C]" /> Leaderboard
-            </div>
-            <p className="text-xl sm:text-2xl font-black text-[#431407]">
-              #{myLeaderboardRank || '-'}
-            </p>
-            <Link to="/leaderboard" className="text-[10px] text-[#EA580C] hover:underline font-bold">
-              View Rankings →
-            </Link>
-          </div>
-        </div>
-
-        {/* Continue Learning Banner */}
-        {continueVideo && (
-          <div className="clay-card-pale p-5 sm:p-6 border-2 border-[#FED7AA] mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-[#EA580C] text-white flex items-center justify-center font-bold flex-shrink-0 shadow-[2px_2px_6px_rgba(154,52,18,0.25)]">
-                <PlayCircle size={26} />
-              </div>
-              <div className="min-w-0">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#C2410C] bg-white px-2 py-0.5 rounded-md border border-[#FED7AA]">
-                  Continue Learning
-                </span>
-                <h3 className="text-base sm:text-lg font-bold text-[#431407] mt-1.5 truncate">
-                  {continueVideo.title}
-                </h3>
-                <p className="text-xs text-[#78716C] flex items-center gap-2 mt-0.5">
-                  <span className="font-semibold text-[#431407]">{continueVideo.course}</span>
-                  {continueVideo.duration > 0 && (
-                    <>
-                      <span>•</span>
-                      <span>{formatDuration(continueVideo.duration)}</span>
-                    </>
-                  )}
-                </p>
-              </div>
-            </div>
-
+        {/* ─────────────────────────────────────────────────────────────
+            2. PRIMARY ACTIONS
+            Continue Learning, Study Tasks, Category Chat, Explore Categories
+           ───────────────────────────────────────────────────────────── */}
+        <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {continueVideo ? (
             <Link
               to={`/course/${continueVideo.courseId || continueVideo.course}/video/${continueVideo._id}`}
-              className="clay-btn-primary self-start md:self-auto text-xs px-5 py-2.5 flex items-center gap-2 shadow-sm"
+              className="clay-card bg-white border border-[#FED7AA] hover:border-[#EA580C] p-3.5 rounded-2xl flex items-center gap-3 transition shadow-sm group"
             >
-              Resume Video <ArrowRight size={14} />
+              <div className="w-9 h-9 rounded-xl bg-[#EA580C] text-white flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+                <PlayCircle size={18} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-black text-[#431407] group-hover:text-[#EA580C] transition truncate">
+                  Resume Study
+                </p>
+                <p className="text-[10px] text-[#78716C] truncate">
+                  {continueVideo.title}
+                </p>
+              </div>
             </Link>
-          </div>
-        )}
+          ) : (
+            <Link
+              to="/my-learning"
+              className="clay-card bg-white border border-[#FED7AA] hover:border-[#EA580C] p-3.5 rounded-2xl flex items-center gap-3 transition shadow-sm group"
+            >
+              <div className="w-9 h-9 rounded-xl bg-[#EA580C] text-white flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+                <BookOpen size={18} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-black text-[#431407] group-hover:text-[#EA580C] transition truncate">
+                  My Learning
+                </p>
+                <p className="text-[10px] text-[#78716C] truncate">
+                  Browse Curricula
+                </p>
+              </div>
+            </Link>
+          )}
 
-        {/* Grid: Main Study Area + Sidebar Widgets */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main Area: 2 Columns */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* View Selector Tabs */}
-            <div className="flex items-center gap-2 border-b border-[#FED7AA] pb-3">
-              {[
-                { id: 'study', label: 'Study Table', icon: LayoutDashboard },
-                { id: 'courses', label: 'My Courses', icon: BookOpen },
-                { id: 'planner', label: 'Calendar Planner', icon: Calendar },
-              ].map((tab) => {
-                const Icon = tab.icon;
-                const isActive = activeTab === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
-                      isActive
-                        ? 'bg-[#EA580C] text-white shadow-sm'
-                        : 'bg-white text-[#78716C] border border-[#FED7AA] hover:bg-[#FFF7ED]'
-                    }`}
-                  >
-                    <Icon size={14} />
-                    {tab.label}
-                  </button>
-                );
-              })}
+          <Link
+            to="/todos"
+            className="clay-card bg-white border border-[#FED7AA] hover:border-[#EA580C] p-3.5 rounded-2xl flex items-center gap-3 transition shadow-sm group"
+          >
+            <div className="w-9 h-9 rounded-xl bg-[#FFF7ED] text-[#EA580C] border border-[#FED7AA] flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+              <CheckSquare size={18} />
             </div>
+            <div className="min-w-0">
+              <p className="text-xs font-black text-[#431407] group-hover:text-[#EA580C] transition truncate">
+                Study Tasks
+              </p>
+              <p className="text-[10px] text-[#78716C] truncate">
+                Daily Checklists
+              </p>
+            </div>
+          </Link>
 
-            {/* TAB 1: Study Table */}
-            {activeTab === 'study' && (
-              <div>
-                <FilterBar
-                  filters={filters}
-                  setFilters={setFilters}
-                  courses={courses}
-                  onAddVideo={() => setShowAddVideo(true)}
-                  onImportPlaylist={() => setShowPlaylistImport(true)}
-                />
+          <Link
+            to="/chat"
+            className="clay-card bg-white border border-[#FED7AA] hover:border-[#EA580C] p-3.5 rounded-2xl flex items-center gap-3 transition shadow-sm group"
+          >
+            <div className="w-9 h-9 rounded-xl bg-[#FFF7ED] text-[#EA580C] border border-[#FED7AA] flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+              <MessageSquare size={18} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-black text-[#431407] group-hover:text-[#EA580C] transition truncate">
+                Category Chat
+              </p>
+              <p className="text-[10px] text-[#78716C] truncate">
+                Peer Discussions
+              </p>
+            </div>
+          </Link>
 
-                {filteredVideos.length === 0 ? (
-                  <div className="clay-card bg-white p-10 text-center">
-                    <BookOpen size={36} className="mx-auto text-[#FED7AA] mb-2" />
-                    <p className="text-sm font-bold text-[#431407]">No videos match this filter</p>
-                    <p className="text-xs text-[#78716C] mt-1">
-                      Try resetting filters or import educational playlists from YouTube.
-                    </p>
-                    <button
-                      onClick={() => setShowAddVideo(true)}
-                      className="clay-btn-primary text-xs px-4 py-2 mt-4"
-                    >
-                      + Add New Video
-                    </button>
-                  </div>
-                ) : (
-                  <DragDropContext onDragEnd={onDragEnd}>
-                    <Droppable droppableId="videos-list">
-                      {(provided) => (
-                        <div
-                          {...provided.droppableProps}
-                          ref={provided.innerRef}
-                          className="space-y-3 mt-4"
-                        >
-                          {filteredVideos.map((video, index) => (
-                            <Draggable
-                              key={video._id}
-                              draggableId={video._id}
-                              index={index}
-                            >
-                              {(prov, snapshot) => (
-                                <div
-                                  ref={prov.innerRef}
-                                  {...prov.draggableProps}
-                                  {...prov.dragHandleProps}
-                                  className={snapshot.isDragging ? 'opacity-80 scale-102' : ''}
-                                >
-                                  <VideoCard
-                                    video={video}
-                                    onToggleComplete={() => handleToggleComplete(video)}
-                                    onDelete={() => handleDeleteVideo(video._id)}
-                                  />
-                                </div>
-                              )}
-                            </Draggable>
-                          ))}
-                          {provided.placeholder}
-                        </div>
-                      )}
-                    </Droppable>
-                  </DragDropContext>
-                )}
-              </div>
-            )}
+          <Link
+            to="/categories"
+            className="clay-card bg-white border border-[#FED7AA] hover:border-[#EA580C] p-3.5 rounded-2xl flex items-center gap-3 transition shadow-sm group"
+          >
+            <div className="w-9 h-9 rounded-xl bg-[#FFF7ED] text-[#EA580C] border border-[#FED7AA] flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+              <Grid size={18} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-black text-[#431407] group-hover:text-[#EA580C] transition truncate">
+                Categories
+              </p>
+              <p className="text-[10px] text-[#78716C] truncate">
+                Explore Tracks
+              </p>
+            </div>
+          </Link>
+        </section>
 
-            {/* TAB 2: Courses Manager */}
-            {activeTab === 'courses' && (
-              <div className="space-y-4">
-                <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-base font-bold text-[#431407]">Enrolled Curricula</h3>
-                  <button
-                    onClick={() => setShowAddCourse(true)}
-                    className="clay-btn-primary text-xs px-3.5 py-1.5 flex items-center gap-1"
-                  >
-                    <Plus size={14} /> Add Course
-                  </button>
+        {/* ─────────────────────────────────────────────────────────────
+            3. LEARNING STATISTICS
+            Today's Study, Videos Completed, Day Streak, Leaderboard Rank
+           ───────────────────────────────────────────────────────────── */}
+        <section>
+          {loading ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div
+                  key={i}
+                  className="clay-card bg-white border border-[#FED7AA] rounded-2xl p-4 animate-pulse space-y-2"
+                >
+                  <div className="h-3 bg-[#FED7AA]/50 rounded w-1/2" />
+                  <div className="h-6 bg-[#FED7AA]/80 rounded w-3/4" />
+                  <div className="h-2 bg-[#FED7AA]/40 rounded w-1/3" />
                 </div>
-                <CourseProgress
-                  courses={courses}
-                  videos={videos}
-                  selectedCourse={selectedCourse}
-                  setSelectedCourse={setSelectedCourse}
-                />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {/* Stat 1: Today's Study */}
+              <div className="clay-card bg-white border border-[#FED7AA] rounded-2xl p-4 sm:p-5 flex flex-col justify-between shadow-sm">
+                <div className="flex items-center gap-2 text-xs font-bold text-[#78716C] uppercase tracking-wider mb-2">
+                  <Clock size={15} className="text-[#EA580C]" />
+                  <span>Today's Study</span>
+                </div>
+                <div>
+                  <p className="text-xl sm:text-2xl font-black text-[#431407]">
+                    {formatDuration(watchStats.todaySeconds || 0)}
+                  </p>
+                  <p className="text-[10px] text-[#78716C] mt-0.5">
+                    Verified session tracking
+                  </p>
+                </div>
               </div>
-            )}
 
-            {/* TAB 3: Calendar View */}
-            {activeTab === 'planner' && (
-              <div className="clay-card bg-white p-5">
-                <CalendarView videos={videos} />
+              {/* Stat 2: Videos Completed */}
+              <div className="clay-card bg-white border border-[#FED7AA] rounded-2xl p-4 sm:p-5 flex flex-col justify-between shadow-sm">
+                <div className="flex items-center gap-2 text-xs font-bold text-[#78716C] uppercase tracking-wider mb-2">
+                  <CheckCircle2 size={15} className="text-green-600" />
+                  <span>Videos Done</span>
+                </div>
+                <div>
+                  <p className="text-xl sm:text-2xl font-black text-[#431407]">
+                    {completedVideos} <span className="text-xs text-[#78716C] font-semibold">/ {totalVideos}</span>
+                  </p>
+                  <p className="text-[10px] text-[#78716C] mt-0.5">
+                    {totalVideos > 0
+                      ? `${Math.round((completedVideos / totalVideos) * 100)}% overall completion`
+                      : 'No lessons loaded yet'}
+                  </p>
+                </div>
               </div>
-            )}
+
+              {/* Stat 3: Day Streak */}
+              <div className="clay-card bg-white border border-[#FED7AA] rounded-2xl p-4 sm:p-5 flex flex-col justify-between shadow-sm">
+                <div className="flex items-center gap-2 text-xs font-bold text-[#78716C] uppercase tracking-wider mb-2">
+                  <Flame size={15} className="text-[#EA580C]" />
+                  <span>Day Streak</span>
+                </div>
+                <div>
+                  <p className="text-xl sm:text-2xl font-black text-[#EA580C]">
+                    {streak.count} {streak.count === 1 ? 'Day' : 'Days'}
+                  </p>
+                  <p className="text-[10px] text-[#78716C] mt-0.5">
+                    Daily study streak
+                  </p>
+                </div>
+              </div>
+
+              {/* Stat 4: Leaderboard Rank */}
+              <div className="clay-card bg-white border border-[#FED7AA] rounded-2xl p-4 sm:p-5 flex flex-col justify-between shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2 text-xs font-bold text-[#78716C] uppercase tracking-wider">
+                    <Trophy size={15} className="text-[#C2410C]" />
+                    <span>Rank</span>
+                  </div>
+                  <Link to="/leaderboard" className="text-[10px] font-bold text-[#EA580C] hover:underline">
+                    Board →
+                  </Link>
+                </div>
+                <div>
+                  <p className="text-xl sm:text-2xl font-black text-[#431407]">
+                    {myLeaderboardRank ? `#${myLeaderboardRank}` : '—'}
+                  </p>
+                  <p className="text-[10px] text-[#78716C] mt-0.5">
+                    Weekly student standing
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* ─────────────────────────────────────────────────────────────
+            4. CONTINUE LEARNING SECTION
+            Showing the last watched video and progress (not oversized)
+           ───────────────────────────────────────────────────────────── */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-black text-[#431407] uppercase tracking-wider flex items-center gap-2">
+              <PlayCircle size={16} className="text-[#EA580C]" />
+              Continue Learning
+            </h2>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowAddVideo(true)}
+                className="text-xs font-bold text-[#EA580C] hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Plus size={13} /> Add Video
+              </button>
+              {videos.length > 0 && (
+                <Link to="/my-learning" className="text-xs font-bold text-[#EA580C] hover:underline flex items-center gap-1">
+                  View All Lessons ({videos.length}) <ChevronRight size={13} />
+                </Link>
+              )}
+            </div>
           </div>
 
-          {/* Right Sidebar Widgets */}
-          <div className="space-y-6">
-            {/* Study To-Do Widget */}
-            <TodoSummary />
-
-            {/* Pomodoro Focus Timer */}
-            <Pomodoro />
-
-            {/* Motivational Quote */}
-            <Quotes />
-
-            {/* Category Community Shortcut */}
-            <div className="clay-card bg-white p-5 border-l-4 border-l-[#EA580C]">
-              <div className="flex items-center gap-2 mb-2">
-                <MessageSquare size={16} className="text-[#EA580C]" />
-                <h4 className="text-sm font-bold text-[#431407]">Live Student Discussion</h4>
+          {continueVideo ? (
+            <div className="clay-card bg-white border-2 border-[#FED7AA] rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+              <div className="flex items-start gap-4 min-w-0">
+                <div className="w-12 h-12 rounded-xl bg-[#FFF7ED] text-[#EA580C] border border-[#FED7AA] flex items-center justify-center flex-shrink-0">
+                  <PlayCircle size={26} />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-[#C2410C] bg-[#FFF7ED] px-2 py-0.5 rounded border border-[#FED7AA]">
+                      {continueVideo.course || 'Learning Track'}
+                    </span>
+                    {continueVideo.completed && (
+                      <span className="text-[10px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded border border-green-200">
+                        Completed
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-sm sm:text-base font-black text-[#431407] truncate" title={continueVideo.title}>
+                    {continueVideo.title}
+                  </h3>
+                  <div className="flex items-center gap-3 text-xs text-[#78716C] mt-1">
+                    {continueVideo.duration > 0 && (
+                      <span>Duration: {formatDuration(continueVideo.duration)}</span>
+                    )}
+                    {continueVideo.platform && (
+                      <span>• {continueVideo.platform}</span>
+                    )}
+                  </div>
+                </div>
               </div>
-              <p className="text-xs text-[#78716C] leading-relaxed mb-3">
-                Connect in real-time with students preparing for {CATEGORY_MAP[user?.category] || 'the same subjects'}.
+
+              <Link
+                to={`/course/${continueVideo.courseId || continueVideo.course}/video/${continueVideo._id}`}
+                className="clay-btn-primary self-start md:self-center text-xs px-5 py-2.5 flex items-center gap-2 flex-shrink-0 shadow-sm"
+              >
+                Resume Video <ArrowRight size={14} />
+              </Link>
+            </div>
+          ) : (
+            <div className="clay-card bg-white border border-[#FED7AA] rounded-2xl p-8 text-center">
+              <PlayCircle size={36} className="mx-auto text-[#FED7AA] mb-2" />
+              <p className="text-sm font-bold text-[#431407]">No active study session yet</p>
+              <p className="text-xs text-[#78716C] mt-1 max-w-sm mx-auto">
+                Explore your category curricula below or check My Learning to begin watching lessons.
               </p>
               <Link
-                to="/chat"
-                className="clay-btn-secondary w-full text-xs py-2 flex items-center justify-center gap-1.5"
+                to="/categories"
+                className="clay-btn-primary inline-flex items-center gap-1.5 text-xs px-4 py-2 mt-3"
               >
-                Join Category Chat →
+                Explore Learning Tracks
+              </Link>
+            </div>
+          )}
+        </section>
+
+        {/* ─────────────────────────────────────────────────────────────
+            5. MY COURSES SECTION
+            Enrolled courses and real video completion progress
+           ───────────────────────────────────────────────────────────── */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-black text-[#431407] uppercase tracking-wider flex items-center gap-2">
+              <BookOpen size={16} className="text-[#EA580C]" />
+              My Enrolled Courses ({myCourses.length})
+            </h2>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowAddCourse(true)}
+                className="text-xs font-bold text-[#EA580C] hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Plus size={13} /> New Course
+              </button>
+              <Link to="/my-learning" className="text-xs font-bold text-[#EA580C] hover:underline flex items-center gap-1">
+                Curriculum Hub <ChevronRight size={13} />
               </Link>
             </div>
           </div>
-        </div>
+
+          {loading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="clay-card bg-white border border-[#FED7AA] rounded-2xl p-4 animate-pulse space-y-3">
+                  <div className="h-4 bg-[#FED7AA]/60 rounded w-2/3" />
+                  <div className="h-2 bg-[#FED7AA]/30 rounded w-full" />
+                  <div className="h-8 bg-[#FFF7ED] rounded-xl" />
+                </div>
+              ))}
+            </div>
+          ) : myCourses.length === 0 ? (
+            <div className="clay-card bg-white border border-[#FED7AA] rounded-2xl p-8 text-center">
+              <BookOpen size={36} className="mx-auto text-[#FED7AA] mb-2" />
+              <p className="text-sm font-bold text-[#431407]">No enrolled courses yet</p>
+              <p className="text-xs text-[#78716C] mt-1 max-w-md mx-auto">
+                You haven't enrolled in any specific course yet. Select a course from the recommended section below to start tracking your progress.
+              </p>
+              <Link
+                to="/categories"
+                className="clay-btn-primary inline-flex items-center gap-1.5 text-xs px-4 py-2 mt-3"
+              >
+                Browse Available Courses
+              </Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {myCourses.map((c) => (
+                <div
+                  key={c._id}
+                  className="clay-card bg-white border border-[#FED7AA] rounded-2xl p-4 flex flex-col justify-between hover:border-[#EA580C] transition shadow-sm"
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#FFF7ED] text-[#C2410C] border border-[#FED7AA]">
+                        {c.category ? c.category.replace('-', ' ') : 'Track'}
+                      </span>
+                      <span className="text-xs font-black text-[#EA580C]">
+                        {c.progress || 0}%
+                      </span>
+                    </div>
+
+                    <h3 className="text-sm font-black text-[#431407] line-clamp-1" title={c.name}>
+                      {c.name}
+                    </h3>
+
+                    {/* Progress Bar */}
+                    <div className="w-full bg-[#FFF7ED] h-2 rounded-full overflow-hidden border border-[#FED7AA] mt-2 mb-1.5">
+                      <div
+                        className="bg-[#EA580C] h-full rounded-full transition-all duration-300"
+                        style={{ width: `${Math.min(c.progress || 0, 100)}%` }}
+                      />
+                    </div>
+
+                    <p className="text-[11px] text-[#78716C] font-semibold">
+                      {c.completedVideos || 0} of {c.totalVideos || 0} lessons completed
+                    </p>
+                  </div>
+
+                  <div className="pt-3 border-t border-[#FED7AA]/50 mt-3 flex items-center justify-between">
+                    <span className="text-[11px] text-[#78716C]">
+                      {c.totalVideos > 0 && c.completedVideos === c.totalVideos
+                        ? 'Course completed'
+                        : 'In progress'}
+                    </span>
+                    <Link
+                      to="/my-learning"
+                      className="text-xs font-black text-[#EA580C] hover:underline flex items-center gap-1"
+                    >
+                      Continue <ArrowRight size={12} />
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* ─────────────────────────────────────────────────────────────
+            6. RECENTLY ADDED OR RECOMMENDED LEARNING SECTION
+            Curated from active courses in the database
+           ───────────────────────────────────────────────────────────── */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-black text-[#431407] uppercase tracking-wider flex items-center gap-2">
+              <Compass size={16} className="text-[#EA580C]" />
+              Recommended for {CATEGORY_MAP[user?.category] || 'You'}
+            </h2>
+            <Link to="/categories" className="text-xs font-bold text-[#EA580C] hover:underline flex items-center gap-1">
+              Browse All Categories <ChevronRight size={13} />
+            </Link>
+          </div>
+
+          {loading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="clay-card bg-white border border-[#FED7AA] rounded-2xl p-4 animate-pulse space-y-3">
+                  <div className="h-28 bg-[#FFF7ED] rounded-xl" />
+                  <div className="h-4 bg-[#FED7AA]/60 rounded w-3/4" />
+                  <div className="h-3 bg-[#FED7AA]/40 rounded w-1/2" />
+                </div>
+              ))}
+            </div>
+          ) : recommendedCourses.length === 0 ? (
+            <div className="clay-card bg-white border border-[#FED7AA] rounded-2xl p-8 text-center">
+              <BookOpen size={36} className="mx-auto text-[#FED7AA] mb-2" />
+              <p className="text-sm font-bold text-[#431407]">No extra courses to show right now</p>
+              <p className="text-xs text-[#78716C] mt-1">
+                More learning paths and YouTube curricula are added regularly by StudyMate educators.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {recommendedCourses.slice(0, 6).map((crs) => (
+                <div
+                  key={crs._id}
+                  className="clay-card bg-white border border-[#FED7AA] rounded-2xl overflow-hidden flex flex-col justify-between hover:border-[#EA580C] transition shadow-sm"
+                >
+                  <div>
+                    {/* Thumbnail banner */}
+                    <div className="h-28 bg-[#FFF7ED] relative flex items-center justify-center border-b border-[#FED7AA]/60 overflow-hidden">
+                      {crs.thumbnail ? (
+                        <img
+                          src={crs.thumbnail}
+                          alt={crs.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center text-[#EA580C]">
+                          <BookOpen size={28} />
+                          <span className="text-[10px] font-black uppercase tracking-wider mt-1 text-[#78716C]">
+                            {crs.category ? crs.category.replace('-', ' ') : 'Course'}
+                          </span>
+                        </div>
+                      )}
+                      <div className="absolute top-2 left-2">
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-white/95 text-[#C2410C] border border-[#FED7AA] shadow-xs">
+                          {crs.category ? crs.category.replace('-', ' ') : 'Track'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-4 space-y-1.5">
+                      <h3 className="text-sm font-black text-[#431407] line-clamp-1" title={crs.name}>
+                        {crs.name}
+                      </h3>
+                      {crs.description && (
+                        <p className="text-xs text-[#78716C] line-clamp-2 leading-relaxed">
+                          {crs.description}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-4 pt-0">
+                    <Link
+                      to="/my-learning"
+                      className="clay-btn-secondary w-full text-xs py-2 flex items-center justify-center gap-1.5 text-center"
+                    >
+                      Start Curriculum <ArrowRight size={13} />
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
       </main>
 
-      {/* Add Course Modal */}
-      {showAddCourse && (
-        <div className="clay-modal-backdrop">
-          <div className="clay-modal-content">
-            <h3 className="text-lg font-bold text-[#431407] mb-3">Create New Course</h3>
-            <AddCourseForm
-              onAdd={handleAddCourse}
-              onClose={() => setShowAddCourse(false)}
-            />
-          </div>
-        </div>
-      )}
+      {/* ─────────────────────────────────────────────────────────────
+          MODALS WITH COMPLETE CLOSE FUNCTIONALITY
+         ───────────────────────────────────────────────────────────── */}
+      {/* 1. Add Educational Video Modal */}
+      <Modal
+        isOpen={showAddVideo}
+        onClose={() => {
+          setShowAddVideo(false);
+          setIsVideoDirty(false);
+        }}
+        title="Add Educational Video"
+        subtitle="Add a YouTube or custom video lesson to your curriculum"
+        icon={<Video size={20} className="text-[#EA580C]" />}
+        isDirty={isVideoDirty}
+        maxWidth="max-w-lg"
+      >
+        <AddVideoForm
+          courses={myCourses.length > 0 ? myCourses : recommendedCourses}
+          onAddVideo={handleAddVideo}
+          onClose={() => {
+            setShowAddVideo(false);
+            setIsVideoDirty(false);
+          }}
+          onDirtyChange={setIsVideoDirty}
+        />
+      </Modal>
 
-      {/* Add Video Modal */}
-      {showAddVideo && (
-        <div className="clay-modal-backdrop">
-          <div className="clay-modal-content">
-            <h3 className="text-lg font-bold text-[#431407] mb-3">Add Educational Video</h3>
-            <AddVideoForm
-              courses={courses}
-              onAdd={handleAddVideo}
-              onClose={() => setShowAddVideo(false)}
-            />
-          </div>
-        </div>
-      )}
+      {/* 2. Create New Course Modal */}
+      <Modal
+        isOpen={showAddCourse}
+        onClose={() => {
+          setShowAddCourse(false);
+          setIsCourseDirty(false);
+        }}
+        title="Create New Course"
+        subtitle="Define a new learning track for your studies"
+        icon={<BookOpen size={20} className="text-[#EA580C]" />}
+        isDirty={isCourseDirty}
+        maxWidth="max-w-md"
+      >
+        <AddCourseForm
+          onAddCourse={handleAddCourse}
+          onClose={() => {
+            setShowAddCourse(false);
+            setIsCourseDirty(false);
+          }}
+          onDirtyChange={setIsCourseDirty}
+        />
+      </Modal>
 
-      {/* Playlist Import Modal */}
-      {showPlaylistImport && (
-        <div className="clay-modal-backdrop">
-          <div className="clay-modal-content max-w-xl">
-            <h3 className="text-lg font-bold text-[#431407] mb-3">Import YouTube Playlist</h3>
-            <PlaylistImport
-              courses={courses}
-              onComplete={() => {
-                setShowPlaylistImport(false);
-                videoService.getAll().then((v) => setVideos(v || []));
-              }}
-              onClose={() => setShowPlaylistImport(false)}
-            />
-          </div>
-        </div>
-      )}
+      {/* 3. Playlist Import Modal */}
+      <Modal
+        isOpen={showPlaylistImport}
+        onClose={() => {
+          setShowPlaylistImport(false);
+          setIsPlaylistDirty(false);
+        }}
+        title="Import YouTube Playlist"
+        subtitle="Auto-fetch videos and verified durations into your courses"
+        icon={<ListVideo size={20} className="text-[#EA580C]" />}
+        isDirty={isPlaylistDirty}
+        maxWidth="max-w-xl"
+      >
+        <PlaylistImport
+          courses={myCourses.length > 0 ? myCourses : recommendedCourses}
+          onAddVideo={handleAddVideo}
+          onClose={() => {
+            setShowPlaylistImport(false);
+            setIsPlaylistDirty(false);
+          }}
+          onDirtyChange={setIsPlaylistDirty}
+        />
+      </Modal>
 
+      {/* ─────────────────────────────────────────────────────────────
+          7. CLEAN REUSABLE FOOTER
+         ───────────────────────────────────────────────────────────── */}
       <Footer />
     </div>
   );
 }
+

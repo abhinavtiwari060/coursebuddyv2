@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { GraduationCap, Atom, Code, Compass, CheckCircle2, Loader2, Sparkles } from 'lucide-react';
+import { GraduationCap, Atom, Code, Compass, CheckCircle2, Loader2, Sparkles, X } from 'lucide-react';
 
 export const CATEGORIES = [
   {
@@ -33,11 +33,23 @@ export const CATEGORIES = [
   },
 ];
 
-export default function CategoryOnboarding({ onComplete }) {
+export default function CategoryOnboarding({ onComplete, onClose }) {
   const { user, updateUserCategory } = useAuth();
   const [selectedId, setSelectedId] = useState(user?.category || null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const backdropRef = useRef(null);
+
+  // Keyboard navigation: Escape key handling
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && onClose) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
 
   const handleContinue = async () => {
     if (!selectedId) {
@@ -62,8 +74,33 @@ export default function CategoryOnboarding({ onComplete }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#431407]/40 backdrop-blur-sm overflow-y-auto">
-      <div className="w-full max-w-4xl clay-card bg-white p-6 sm:p-10 my-8">
+    <div
+      ref={backdropRef}
+      onClick={(e) => {
+        if (onClose && e.target === backdropRef.current) {
+          onClose();
+        }
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#431407]/40 backdrop-blur-sm overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-4xl clay-card bg-white p-6 sm:p-10 my-8 relative"
+      >
+        {/* Top-right close button if dismissible */}
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close dialog"
+            className="absolute top-5 right-5 w-8 h-8 rounded-xl flex items-center justify-center text-[#78716C] hover:text-[#431407] hover:bg-[#FFF7ED] border border-transparent hover:border-[#FED7AA] transition cursor-pointer"
+          >
+            <X size={18} strokeWidth={2.5} />
+          </button>
+        )}
+
         {/* Header */}
         <div className="text-center max-w-2xl mx-auto mb-8">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#FFF7ED] text-[#C2410C] border border-[#FED7AA] text-xs font-bold uppercase tracking-wider mb-3">

@@ -99,13 +99,10 @@ export const videoService = {
 
 // ── Course Service ───────────────────────
 export const courseService = {
-  getAll: () => api.get("/api/courses").then((r) => r.data),
-
-  create: (name) =>
-    api.post("/api/courses", { name }).then((r) => r.data),
-
-  delete: (id) =>
-    api.delete(`/api/courses/${id}`).then((r) => r.data),
+  getAll: (params) => api.get("/api/courses", { params }).then((r) => r.data),
+  getMy: () => api.get("/api/courses/my").then((r) => r.data),
+  create: (courseData) => api.post("/api/courses", typeof courseData === 'string' ? { name: courseData } : courseData).then((r) => r.data),
+  delete: (id) => api.delete(`/api/courses/${id}`).then((r) => r.data),
 };
 
 // ── Streak Service ───────────────────────
@@ -139,6 +136,17 @@ export const watchService = {
 // ── Chat Service ─────────────────────────
 export const chatService = {
   getHistory: (room) => api.get(`/api/chat/messages/${room}`).then((r) => r.data),
+  editMessage: (id, message) => api.put(`/api/chat/messages/${id}`, { message }).then((r) => r.data),
+  deleteMessage: (id) => api.delete(`/api/chat/messages/${id}`).then((r) => r.data),
+};
+
+// ── Category Change Request Service ───────
+export const categoryRequestService = {
+  submit: (data) => api.post('/api/category-requests', data).then((r) => r.data),
+  getMyRequest: () => api.get('/api/category-requests/my').then((r) => r.data),
+  adminGetAll: () => api.get('/api/admin/category-requests').then((r) => r.data),
+  adminApprove: (id) => api.post(`/api/admin/category-requests/${id}/approve`).then((r) => r.data),
+  adminReject: (id) => api.post(`/api/admin/category-requests/${id}/reject`).then((r) => r.data),
 };
 
 // ── Bug Report Service ───────────────────
@@ -189,12 +197,17 @@ export const adminService = {
   getBugReports: () => api.get("/api/admin/bug-reports").then(r => r.data),
   updateBugReport: (id, status) => api.put(`/api/admin/bug-reports/${id}`, { status }).then(r => r.data),
   deleteBugReport: (id) => api.delete(`/api/admin/bug-reports/${id}`).then(r => r.data),
-  // Course Creator
+  // Course Creator & Manager
+  getCourses: () => api.get('/api/admin/courses').then(r => r.data),
+  createCourse: (data) => api.post('/api/admin/courses', data).then(r => r.data),
+  updateCourse: (id, data) => api.put(`/api/admin/courses/${id}`, data).then(r => r.data),
+  deleteCourseById: (id) => api.delete(`/api/admin/courses/${id}`).then(r => r.data),
+  getCoursePlaylists: (courseId) => api.get(`/api/admin/courses/${courseId}/playlists`).then(r => r.data),
   fetchYouTubePlaylist: (url) => api.get('/api/admin/youtube/playlist', { params: { url } }).then(r => r.data),
   searchYoutubePlaylists: (q) => api.get('/api/admin/youtube/search-playlists', { params: { q } }).then(r => r.data),
   assignCourse: (data) => api.post('/api/admin/courses/assign', data).then(r => r.data),
   getAssignedCourses: () => api.get('/api/admin/courses/assigned').then(r => r.data),
-  deleteCourse: (courseId) => api.delete(`/api/admin/course/${courseId}`).then(r => r.data),
+  deleteCourse: (courseId) => api.delete(`/api/admin/courses/${courseId}`).then(r => r.data),
   deleteCourseByName: (name) => api.delete(`/api/admin/courses/by-name/${encodeURIComponent(name)}`).then(r => r.data),
   getDeleteRequests: () => api.get('/api/admin/delete-requests').then(r => r.data),
   approveDeleteRequest: (id) => api.post(`/api/admin/delete-requests/${id}/approve`).then(r => r.data),

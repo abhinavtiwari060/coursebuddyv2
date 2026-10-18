@@ -1,43 +1,65 @@
-import { Heart, Globe, GraduationCap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function Footer() {
+  const currentYear = new Date().getFullYear();
+
   return (
-    <footer className="mt-16 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden relative">
-      {/* Decorative accent */}
-      <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#EA580C]" />
-      
-      <div className="max-w-7xl mx-auto px-6 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-10 items-center justify-center">
+    <footer className="mt-auto border-t border-[#FED7AA] bg-white text-[#431407]">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
           
-          <div className="flex flex-col items-center md:items-start">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-                <GraduationCap className="text-orange-500" size={18} />
-              </div>
-              <span className="text-xl font-black text-slate-800 dark:text-white">StudyMate</span>
-            </div>
-            <p className="text-xs font-bold text-slate-400 italic text-center md:text-left leading-relaxed">
-              Empowering learners through structured knowledge and persistent effort.
+          {/* Brand & Platform Summary */}
+          <div className="space-y-2">
+            <Link to="/dashboard" className="inline-block focus:outline-none">
+              <span className="text-lg font-black tracking-tight text-[#431407]">
+                Study<span className="text-[#EA580C]">Mate</span>
+              </span>
+            </Link>
+            <p className="text-xs text-[#78716C] leading-relaxed max-w-sm">
+              A distraction-free, student-first learning platform for tracking study time, curating course curricula, and building daily consistency.
             </p>
           </div>
 
-          <div className="flex flex-col items-center">
-            <div className="flex gap-8 text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
-               <Link to="/privacy" className="hover:text-orange-500 transition-colors">Privacy</Link>
-               <Link to="/dashboard" className="hover:text-orange-500 transition-colors">Dashboard</Link>
-               <a href="https://abhinavtiwari.netlify.app/" target="_blank" rel="noopener noreferrer" className="hover:text-orange-500 transition-colors flex items-center gap-1">
-                 <Globe size={12} /> abhinav.dev
-               </a>
-            </div>
-            <p className="mt-4 text-[10px] font-bold text-slate-500 flex items-center gap-1.5 px-4 py-2 bg-slate-100 dark:bg-slate-900 rounded-full border border-slate-200 dark:border-slate-800">
-              Handcrafted with <Heart size={10} className="text-red-500 fill-red-500 animate-pulse" /> by <span className="text-orange-500">Abhinav Tiwari</span>
+          {/* Quick Navigation Links */}
+          <div className="space-y-2 md:text-center">
+            <p className="text-[11px] font-black uppercase tracking-wider text-[#EA580C]">
+              Platform Navigation
             </p>
+            <div className="flex flex-wrap md:justify-center gap-x-5 gap-y-2 text-xs font-bold text-[#78716C]">
+              <Link to="/dashboard" className="hover:text-[#EA580C] transition">
+                Dashboard
+              </Link>
+              <Link to="/my-learning" className="hover:text-[#EA580C] transition">
+                My Learning
+              </Link>
+              <Link to="/categories" className="hover:text-[#EA580C] transition">
+                Categories
+              </Link>
+              <Link to="/todos" className="hover:text-[#EA580C] transition">
+                To-Do
+              </Link>
+              <Link to="/leaderboard" className="hover:text-[#EA580C] transition">
+                Leaderboard
+              </Link>
+            </div>
           </div>
 
-          <div className="flex flex-col items-center md:items-end">
-             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">&copy; 2026 StudyMate Global</p>
-             <p className="text-[10px] text-slate-400 mt-1">All rights reserved.</p>
+          {/* Legal & Dynamic Copyright */}
+          <div className="space-y-2 md:text-right">
+            <p className="text-[11px] font-black uppercase tracking-wider text-[#EA580C]">
+              Legal & Support
+            </p>
+            <div className="flex flex-wrap md:justify-end gap-x-4 gap-y-1 text-xs font-bold text-[#78716C]">
+              <Link to="/privacy-policy" className="hover:text-[#EA580C] transition">
+                Privacy Policy
+              </Link>
+              <Link to="/chat" className="hover:text-[#EA580C] transition">
+                Community Chat
+              </Link>
+            </div>
+            <p className="text-[11px] text-[#78716C] pt-1">
+              &copy; {currentYear} StudyMate. All rights reserved.
+            </p>
           </div>
 
         </div>

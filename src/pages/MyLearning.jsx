@@ -2,8 +2,12 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import Modal from '../components/Modal';
+import AddVideoForm from '../components/AddVideoForm';
+import AddCourseForm from '../components/AddCourseForm';
+import PlaylistImport from '../components/PlaylistImport';
 import { courseService, videoService } from '../api/api';
-import { BookOpen, PlayCircle, CheckCircle2, Clock, Loader2, ArrowRight } from 'lucide-react';
+import { BookOpen, PlayCircle, CheckCircle2, Clock, Loader2, ArrowRight, Plus, Video, ListVideo } from 'lucide-react';
 import { formatDuration } from '../utils/helpers';
 
 export default function MyLearning() {
@@ -11,6 +15,36 @@ export default function MyLearning() {
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all'); // all, in-progress, completed
+
+  // Modal states
+  const [showAddVideo, setShowAddVideo] = useState(false);
+  const [showAddCourse, setShowAddCourse] = useState(false);
+  const [showPlaylistImport, setShowPlaylistImport] = useState(false);
+  const [isVideoDirty, setIsVideoDirty] = useState(false);
+  const [isCourseDirty, setIsCourseDirty] = useState(false);
+  const [isPlaylistDirty, setIsPlaylistDirty] = useState(false);
+
+  const handleAddVideo = async (v) => {
+    try {
+      const data = await videoService.create(v);
+      setVideos((prev) => [data, ...prev]);
+      setShowAddVideo(false);
+      setIsVideoDirty(false);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to add video');
+    }
+  };
+
+  const handleAddCourse = async (c) => {
+    try {
+      const data = await courseService.create(c.name);
+      setCourses((prev) => [...prev, data]);
+      setShowAddCourse(false);
+      setIsCourseDirty(false);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to add course');
+    }
+  };
 
   useEffect(() => {
     const loadLearningData = async () => {
@@ -65,7 +99,7 @@ export default function MyLearning() {
       <Navbar />
 
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
             <h1 className="text-3xl font-black text-[#431407] tracking-tight">
               My Learning
@@ -75,20 +109,47 @@ export default function MyLearning() {
             </p>
           </div>
 
-          <div className="flex items-center gap-1.5 self-start sm:self-auto">
-            {['all', 'in-progress', 'completed'].map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold capitalize transition ${
-                  filter === f
-                    ? 'bg-[#EA580C] text-white shadow-sm'
-                    : 'bg-white text-[#C2410C] border border-[#FED7AA] hover:bg-[#FFF7ED]'
-                }`}
-              >
-                {f.replace('-', ' ')}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowAddVideo(true)}
+              className="clay-btn-primary text-xs px-3.5 py-2 flex items-center gap-1.5 shadow-sm"
+              title="Add a video lesson"
+            >
+              <Plus size={14} /> Add Video
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAddCourse(true)}
+              className="clay-btn-secondary text-xs px-3.5 py-2 flex items-center gap-1.5"
+              title="Create a new course"
+            >
+              <Plus size={14} /> New Course
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowPlaylistImport(true)}
+              className="clay-btn-secondary text-xs px-3.5 py-2 flex items-center gap-1.5"
+              title="Import YouTube playlist"
+            >
+              <ListVideo size={14} /> Import Playlist
+            </button>
+
+            <div className="flex items-center gap-1.5 ml-0 sm:ml-2">
+              {['all', 'in-progress', 'completed'].map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold capitalize transition ${
+                    filter === f
+                      ? 'bg-[#EA580C] text-white shadow-sm'
+                      : 'bg-white text-[#C2410C] border border-[#FED7AA] hover:bg-[#FFF7ED]'
+                  }`}
+                >
+                  {f.replace('-', ' ')}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -174,7 +235,79 @@ export default function MyLearning() {
         )}
       </main>
 
+      {/* ─────────────────────────────────────────────────────────────
+          MODALS WITH BULLETPROOF CLOSE FUNCTIONALITY
+         ───────────────────────────────────────────────────────────── */}
+      <Modal
+        isOpen={showAddVideo}
+        onClose={() => {
+          setShowAddVideo(false);
+          setIsVideoDirty(false);
+        }}
+        title="Add Educational Video"
+        subtitle="Add a YouTube or custom video lesson to your curriculum"
+        icon={<Video size={20} className="text-[#EA580C]" />}
+        isDirty={isVideoDirty}
+        maxWidth="max-w-lg"
+      >
+        <AddVideoForm
+          courses={courses}
+          onAddVideo={handleAddVideo}
+          onClose={() => {
+            setShowAddVideo(false);
+            setIsVideoDirty(false);
+          }}
+          onDirtyChange={setIsVideoDirty}
+        />
+      </Modal>
+
+      <Modal
+        isOpen={showAddCourse}
+        onClose={() => {
+          setShowAddCourse(false);
+          setIsCourseDirty(false);
+        }}
+        title="Create New Course"
+        subtitle="Define a new learning track for your studies"
+        icon={<BookOpen size={20} className="text-[#EA580C]" />}
+        isDirty={isCourseDirty}
+        maxWidth="max-w-md"
+      >
+        <AddCourseForm
+          onAddCourse={handleAddCourse}
+          onClose={() => {
+            setShowAddCourse(false);
+            setIsCourseDirty(false);
+          }}
+          onDirtyChange={setIsCourseDirty}
+        />
+      </Modal>
+
+      <Modal
+        isOpen={showPlaylistImport}
+        onClose={() => {
+          setShowPlaylistImport(false);
+          setIsPlaylistDirty(false);
+        }}
+        title="Import YouTube Playlist"
+        subtitle="Auto-fetch videos and verified durations into your courses"
+        icon={<ListVideo size={20} className="text-[#EA580C]" />}
+        isDirty={isPlaylistDirty}
+        maxWidth="max-w-xl"
+      >
+        <PlaylistImport
+          courses={courses}
+          onAddVideo={handleAddVideo}
+          onClose={() => {
+            setShowPlaylistImport(false);
+            setIsPlaylistDirty(false);
+          }}
+          onDirtyChange={setIsPlaylistDirty}
+        />
+      </Modal>
+
       <Footer />
     </div>
   );
 }
+

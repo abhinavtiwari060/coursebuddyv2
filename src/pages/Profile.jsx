@@ -2,27 +2,30 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import api from '../api/api';
+import Modal from '../components/Modal';
+import api, { categoryRequestService } from '../api/api';
 import { formatDuration } from '../utils/helpers';
 import {
-  User, 
-  Mail, 
-  Edit3, 
-  Save, 
-  X, 
-  Camera, 
-  BookOpen, 
+  User,
+  Mail,
+  Edit3,
+  Save,
+  X,
+  Camera,
+  BookOpen,
   CheckCircle2,
-  Clock, 
-  Flame, 
-  Calendar, 
-  LogOut, 
-  ArrowLeft, 
-  Bell, 
-  BellOff, 
-  Sparkles, 
-  GraduationCap,
-  Loader2
+  Clock,
+  Flame,
+  ArrowLeft,
+  Bell,
+  BellOff,
+  Sparkles,
+  Lock,
+  Loader2,
+  AlertCircle,
+  HelpCircle,
+  Send,
+  Compass
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -34,35 +37,56 @@ const CATEGORY_CHOICES = [
 ];
 
 export default function Profile() {
-  const { user: authUser, logout, updateUserCategory, setUser } = useAuth();
+  const { user: authUser, logout, setUser } = useAuth();
   const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState({ name: '', bio: '', category: 'skills' });
+  const [form, setForm] = useState({ name: '', bio: '' });
   const [saving, setSaving] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState('');
   const fileRef = useRef();
 
+  // Category Request State
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [myCategoryRequest, setMyCategoryRequest] = useState(null);
+  const [requestedCategory, setRequestedCategory] = useState('skills');
+  const [changeReason, setChangeReason] = useState('');
+  const [submittingRequest, setSubmittingRequest] = useState(false);
+  const [requestError, setRequestError] = useState('');
+  const [requestSuccess, setRequestSuccess] = useState('');
+
   useEffect(() => {
-    if (!authUser) { navigate('/login'); return; }
+    if (!authUser) {
+      navigate('/login');
+      return;
+    }
     fetchProfile();
-  }, [authUser]);
+    fetchMyCategoryRequest();
+  }, [authUser, navigate]);
 
   const fetchProfile = async () => {
     try {
-      const data = await api.get('/api/profile').then(r => r.data);
+      const data = await api.get('/api/profile').then((r) => r.data);
       setProfile(data);
-      setForm({ 
-        name: data.user.name, 
+      setForm({
+        name: data.user.name,
         bio: data.user.bio || '',
-        category: data.user.category || 'skills',
       });
       setAvatarPreview(data.user.avatar || '');
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchMyCategoryRequest = async () => {
+    try {
+      const req = await categoryRequestService.getMyRequest();
+      setMyCategoryRequest(req);
+    } catch (err) {
+      console.error('Failed to load category request:', err);
     }
   };
 
@@ -74,18 +98,19 @@ export default function Profile() {
     reader.readAsDataURL(file);
   };
 
-  const handleSave = async () => {
+  const handleSaveProfile = async () => {
     setSaving(true);
     try {
-      const res = await api.put('/api/profile', {
-        name: form.name,
-        bio: form.bio,
-        avatar: avatarPreview,
-        category: form.category,
-      }).then(r => r.data);
+      const res = await api
+        .put('/api/profile', {
+          name: form.name,
+          bio: form.bio,
+          avatar: avatarPreview,
+        })
+        .then((r) => r.data);
 
       const updatedUser = res.user || res;
-      setProfile(prev => ({ ...prev, user: { ...prev.user, ...updatedUser } }));
+      setProfile((prev) => ({ ...prev, user: { ...prev.user, ...updatedUser } }));
       if (setUser) {
         setUser(updatedUser);
         localStorage.setItem('studymate_user', JSON.stringify(updatedUser));
@@ -93,9 +118,39 @@ export default function Profile() {
       setEditing(false);
     } catch (err) {
       console.error(err);
-      alert('Failed to update profile.');
+      alert(err.response?.data?.error || 'Failed to update profile.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSubmitCategoryRequest = async (e) => {
+    e.preventDefault();
+    setRequestError('');
+    setRequestSuccess('');
+
+    if (requestedCategory === profile?.user?.category) {
+      setRequestError('Please select a category different from your current assigned category.');
+      return;
+    }
+
+    setSubmittingRequest(true);
+    try {
+      const res = await categoryRequestService.submit({
+        requestedCategory,
+        reason: changeReason.trim(),
+      });
+      setMyCategoryRequest(res.request);
+      setRequestSuccess('Category change request submitted! An administrator will review your request.');
+      setChangeReason('');
+      setTimeout(() => {
+        setShowCategoryModal(false);
+        setRequestSuccess('');
+      }, 2500);
+    } catch (err) {
+      setRequestError(err.response?.data?.error || 'Failed to submit category change request.');
+    } finally {
+      setSubmittingRequest(false);
     }
   };
 
@@ -103,38 +158,47 @@ export default function Profile() {
     try {
       if (profile.user.fcmToken) {
         await api.delete('/api/profile/fcm-token');
-        setProfile(prev => ({ ...prev, user: { ...prev.user, fcmToken: null } }));
-        alert("Push notifications disabled.");
+        setProfile((prev) => ({ ...prev, user: { ...prev.user, fcmToken: null } }));
+        alert('Push notifications disabled.');
       } else {
         const { requestForToken } = await import('../utils/firebase');
         const token = await requestForToken();
         if (token) {
           await api.post('/api/profile/fcm-token', { token });
-          setProfile(prev => ({ ...prev, user: { ...prev.user, fcmToken: token } }));
-          alert("Push notifications enabled!");
+          setProfile((prev) => ({ ...prev, user: { ...prev.user, fcmToken: token } }));
+          alert('Push notifications enabled!');
         } else {
-          alert("Permission denied or notification token generation failed.");
+          alert('Permission denied or notification token generation failed.');
         }
       }
     } catch (err) {
       console.error(err);
-      alert("Failed to toggle notifications.");
+      alert('Failed to toggle notifications.');
     }
   };
 
   const getInitials = (name = '') =>
-    name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+    name
+      .split(' ')
+      .map((w) => w[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
 
-  if (loading || !profile) return (
-    <div className="min-h-screen flex items-center justify-center bg-[#FFF7ED]">
-      <div className="flex flex-col items-center gap-3">
-        <Loader2 className="w-10 h-10 text-[#EA580C] animate-spin" />
-        <p className="text-[#78716C] font-semibold text-sm">Loading student profile...</p>
+  if (loading || !profile) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#FFF7ED]">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-10 h-10 text-[#EA580C] animate-spin" />
+          <p className="text-[#78716C] font-semibold text-sm">Loading student profile...</p>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   const { user: u, stats, recentActivity, completedCourses } = profile;
+  const currentCategoryLabel =
+    CATEGORY_CHOICES.find((c) => c.id === u.category)?.label || 'General Curriculum';
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FFF7ED]">
@@ -149,7 +213,7 @@ export default function Profile() {
         </button>
 
         {/* Profile Card */}
-        <div className="clay-card bg-white p-6 sm:p-8 mb-8">
+        <div className="clay-card bg-white p-6 sm:p-8 mb-8 border border-[#FED7AA] rounded-2xl shadow-sm">
           <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
             {/* Avatar */}
             <div className="relative group">
@@ -192,21 +256,18 @@ export default function Profile() {
                     />
                   </div>
 
+                  {/* Read-Only Category Indicator */}
                   <div>
-                    <label className="block text-xs font-bold text-[#431407] mb-1">
-                      Primary Learning Path (Personalizes Dashboard & Chat)
+                    <label className="block text-xs font-bold text-[#78716C] mb-1 flex items-center gap-1">
+                      <Lock size={12} className="text-[#EA580C]" /> Assigned Learning Category (Locked)
                     </label>
-                    <select
-                      value={form.category}
-                      onChange={(e) => setForm({ ...form, category: e.target.value })}
-                      className="clay-input text-sm bg-white"
-                    >
-                      {CATEGORY_CHOICES.map((cat) => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.label}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="px-3.5 py-2.5 bg-[#FFF7ED] border border-[#FED7AA] rounded-xl text-xs font-bold text-[#431407] flex items-center justify-between">
+                      <span>{currentCategoryLabel}</span>
+                      <span className="text-[10px] text-[#C2410C] uppercase font-bold">Admin Managed</span>
+                    </div>
+                    <p className="text-[10px] text-[#78716C] mt-1">
+                      Category determines your course tracks and chat room. Use "Request Category Change" to switch.
+                    </p>
                   </div>
 
                   <div>
@@ -222,7 +283,7 @@ export default function Profile() {
 
                   <div className="flex items-center gap-2 pt-2">
                     <button
-                      onClick={handleSave}
+                      onClick={handleSaveProfile}
                       disabled={saving}
                       className="clay-btn-primary text-xs px-4 py-2 flex items-center gap-1.5"
                     >
@@ -241,8 +302,9 @@ export default function Profile() {
                 <div>
                   <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5">
                     <h2 className="text-2xl font-black text-[#431407]">{u.name}</h2>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FFF7ED] text-[#C2410C] border border-[#FED7AA]">
-                      {CATEGORY_CHOICES.find((c) => c.id === u.category)?.label || 'General Track'}
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FFF7ED] text-[#C2410C] border border-[#FED7AA]">
+                      <Lock size={11} className="text-[#EA580C]" />
+                      {currentCategoryLabel}
                     </span>
                   </div>
 
@@ -254,12 +316,24 @@ export default function Profile() {
                     {u.bio || 'No bio added yet. Add your study goals!'}
                   </p>
 
-                  <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 mt-5">
+                  {/* Category Status & Request Action */}
+                  <div className="mt-4 pt-3 border-t border-[#FED7AA]/60 flex flex-wrap items-center justify-center sm:justify-start gap-3">
                     <button
                       onClick={() => setEditing(true)}
                       className="clay-btn-secondary text-xs px-3.5 py-2 flex items-center gap-1.5"
                     >
-                      <Edit3 size={14} /> Edit Profile & Learning Path
+                      <Edit3 size={14} /> Edit Profile
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        const target = CATEGORY_CHOICES.find((c) => c.id !== u.category)?.id || 'skills';
+                        setRequestedCategory(target);
+                        setShowCategoryModal(true);
+                      }}
+                      className="clay-btn-secondary text-xs px-3.5 py-2 flex items-center gap-1.5 text-[#EA580C] border-[#FED7AA]"
+                    >
+                      <Compass size={14} /> Request Category Change
                     </button>
 
                     <button
@@ -267,9 +341,45 @@ export default function Profile() {
                       className="clay-btn-subtle text-xs flex items-center gap-1.5"
                     >
                       {u.fcmToken ? <BellOff size={14} /> : <Bell size={14} />}
-                      {u.fcmToken ? 'Disable Notifications' : 'Enable Notifications'}
+                      {u.fcmToken ? 'Disable Push' : 'Enable Push'}
                     </button>
                   </div>
+
+                  {/* Active Request Notice Banner */}
+                  {myCategoryRequest && myCategoryRequest.status === 'pending' && (
+                    <div className="mt-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs font-bold text-amber-800 flex items-center gap-2">
+                      <Clock size={15} className="flex-shrink-0 text-amber-600" />
+                      <span>
+                        Pending Request: You requested to change your category to{' '}
+                        <strong>
+                          {CATEGORY_CHOICES.find((c) => c.id === myCategoryRequest.requestedCategory)?.label ||
+                            myCategoryRequest.requestedCategory}
+                        </strong>
+                        . Waiting for admin approval.
+                      </span>
+                    </div>
+                  )}
+
+                  {myCategoryRequest && myCategoryRequest.status === 'rejected' && (
+                    <div className="mt-3 p-3 rounded-xl bg-red-50 border border-red-200 text-xs font-bold text-red-700 flex items-center gap-2">
+                      <AlertCircle size={15} className="flex-shrink-0 text-red-600" />
+                      <span>
+                        Your previous request to change to{' '}
+                        {CATEGORY_CHOICES.find((c) => c.id === myCategoryRequest.requestedCategory)?.label} was
+                        rejected by the admin team.
+                      </span>
+                    </div>
+                  )}
+
+                  {myCategoryRequest && myCategoryRequest.status === 'approved' && (
+                    <div className="mt-3 p-3 rounded-xl bg-green-50 border border-green-200 text-xs font-bold text-green-700 flex items-center gap-2">
+                      <CheckCircle2 size={15} className="flex-shrink-0 text-green-600" />
+                      <span>
+                        Your category change was approved! You are enrolled in{' '}
+                        {currentCategoryLabel}.
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -278,71 +388,137 @@ export default function Profile() {
 
         {/* Learning Statistics Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-          <div className="clay-card bg-white p-4">
+          <div className="clay-card bg-white p-4 border border-[#FED7AA] rounded-2xl shadow-sm">
             <span className="text-xs text-[#78716C] font-bold uppercase flex items-center gap-1 mb-1">
               <Clock size={13} className="text-[#EA580C]" /> Watch Time
             </span>
             <p className="text-xl font-black text-[#431407]">{formatDuration(stats.totalWatchTime || 0)}</p>
           </div>
 
-          <div className="clay-card bg-white p-4">
+          <div className="clay-card bg-white p-4 border border-[#FED7AA] rounded-2xl shadow-sm">
             <span className="text-xs text-[#78716C] font-bold uppercase flex items-center gap-1 mb-1">
               <CheckCircle2 size={13} className="text-green-600" /> Completed
             </span>
             <p className="text-xl font-black text-[#431407]">{stats.completedVideos || 0}</p>
           </div>
 
-          <div className="clay-card bg-white p-4">
+          <div className="clay-card bg-white p-4 border border-[#FED7AA] rounded-2xl shadow-sm">
             <span className="text-xs text-[#78716C] font-bold uppercase flex items-center gap-1 mb-1">
               <Flame size={13} className="text-[#EA580C]" /> Streak
             </span>
             <p className="text-xl font-black text-[#EA580C]">{stats.currentStreak || 0}d</p>
           </div>
 
-          <div className="clay-card bg-white p-4">
+          <div className="clay-card bg-white p-4 border border-[#FED7AA] rounded-2xl shadow-sm">
             <span className="text-xs text-[#78716C] font-bold uppercase flex items-center gap-1 mb-1">
-              <BookOpen size={13} className="text-[#C2410C]" /> Courses
+              <BookOpen size={13} className="text-[#EA580C]" /> Curricula
             </span>
             <p className="text-xl font-black text-[#431407]">{stats.totalCourses || 0}</p>
           </div>
         </div>
+      </main>
 
-        {/* Completed Courses list */}
-        {completedCourses && completedCourses.length > 0 && (
-          <div className="clay-card bg-white p-6 mb-8">
-            <h3 className="text-base font-bold text-[#431407] mb-3">
-              Completed Curricula
-            </h3>
-            <div className="space-y-2">
-              {completedCourses.map((c) => (
-                <div
-                  key={c._id}
-                  className="p-3 rounded-xl bg-[#FFF7ED] border border-[#FED7AA] flex items-center justify-between text-xs"
-                >
-                  <span className="font-bold text-[#431407]">{c.name}</span>
-                  <span className="text-[#78716C]">
-                    Completed on {new Date(c.completedAt).toLocaleDateString()}
-                  </span>
-                </div>
-              ))}
-            </div>
+      {/* ─────────────────────────────────────────────────────────────
+          MODAL: REQUEST CATEGORY CHANGE
+         ───────────────────────────────────────────────────────────── */}
+      <Modal
+        isOpen={showCategoryModal}
+        onClose={() => {
+          setShowCategoryModal(false);
+          setRequestError('');
+          setRequestSuccess('');
+        }}
+        title="Request Category Change"
+        subtitle="Changes your primary learning track and category chat room."
+        icon={<Compass size={20} className="text-[#EA580C]" />}
+        isDirty={Boolean(changeReason.trim())}
+        maxWidth="max-w-lg"
+      >
+        {requestError && (
+          <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-bold flex items-center gap-2">
+            <AlertCircle size={15} />
+            <span>{requestError}</span>
           </div>
         )}
 
-        {/* Sign Out Card */}
-        <div className="clay-card bg-white p-5 flex items-center justify-between">
-          <div>
-            <h4 className="text-sm font-bold text-[#431407]">Sign Out of StudyMate</h4>
-            <p className="text-xs text-[#78716C]">Your progress, tasks, and watch time will remain safely saved.</p>
+        {requestSuccess && (
+          <div className="mb-4 p-3 rounded-xl bg-green-50 border border-green-200 text-green-700 text-xs font-bold flex items-center gap-2">
+            <CheckCircle2 size={15} />
+            <span>{requestSuccess}</span>
           </div>
-          <button
-            onClick={() => { logout(); navigate('/login'); }}
-            className="clay-btn-secondary text-xs px-4 py-2 text-red-600 border-red-200 hover:bg-red-50 flex items-center gap-1.5"
-          >
-            <LogOut size={14} /> Sign Out
-          </button>
-        </div>
-      </main>
+        )}
+
+        <form onSubmit={handleSubmitCategoryRequest} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-[#431407] uppercase tracking-wider mb-1">
+              Current Category
+            </label>
+            <div className="px-3.5 py-2.5 bg-[#FFF7ED] border border-[#FED7AA] rounded-xl text-xs font-bold text-[#78716C]">
+              {currentCategoryLabel}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-[#431407] uppercase tracking-wider mb-1">
+              Requested Category <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={requestedCategory}
+              onChange={(e) => setRequestedCategory(e.target.value)}
+              className="w-full px-3.5 py-2.5 text-xs font-bold bg-[#FFF7ED] border border-[#FED7AA] rounded-xl text-[#431407] focus:outline-none"
+            >
+              {CATEGORY_CHOICES.filter((c) => c.id !== u.category).map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-[#431407] uppercase tracking-wider mb-1">
+              Reason for Change (Optional)
+            </label>
+            <textarea
+              rows={3}
+              value={changeReason}
+              onChange={(e) => setChangeReason(e.target.value)}
+              placeholder="Tell the administration why you want to switch tracks..."
+              maxLength={500}
+              className="w-full px-3.5 py-2.5 text-xs bg-[#FFF7ED] border border-[#FED7AA] rounded-xl text-[#431407] focus:outline-none focus:ring-2 focus:ring-[#EA580C]"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#FED7AA]">
+            <button
+              type="button"
+              onClick={() => {
+                setShowCategoryModal(false);
+                setRequestError('');
+                setRequestSuccess('');
+              }}
+              className="px-4 py-2 text-xs font-bold text-[#78716C] hover:bg-[#FFF7ED] rounded-xl transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submittingRequest || myCategoryRequest?.status === 'pending'}
+              className="clay-btn-primary px-5 py-2 text-xs font-black shadow-sm disabled:opacity-50 flex items-center gap-1.5"
+            >
+              {submittingRequest ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" /> Submitting...
+                </>
+              ) : (
+                <>
+                  <Send size={14} /> Submit Request
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       <Footer />
     </div>

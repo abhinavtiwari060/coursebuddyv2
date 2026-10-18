@@ -20,10 +20,19 @@ export default function NotificationPanel() {
         setIsOpen(false);
       }
     };
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setIsOpen(false);
+      }
+    };
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside);
+      window.addEventListener('keydown', handleKeyDown);
     }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, [isOpen]);
 
   const fetchNotifications = async () => {
@@ -75,11 +84,21 @@ export default function NotificationPanel() {
         <div className="absolute right-0 mt-2 w-80 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl z-50 overflow-hidden slide-down">
           <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
             <h3 className="font-black text-slate-800 dark:text-white">Notifications</h3>
-            {unreadCount > 0 && (
-              <span className="bg-orange-100 text-orange-600 text-xs font-bold px-2 py-1 rounded-full dark:bg-slate-800 dark:text-orange-400">
-                {unreadCount} New
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {unreadCount > 0 && (
+                <span className="bg-orange-100 text-orange-600 text-xs font-bold px-2 py-0.5 rounded-full dark:bg-slate-800 dark:text-orange-400">
+                  {unreadCount} New
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                aria-label="Close notifications"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+              >
+                <X size={16} />
+              </button>
+            </div>
           </div>
 
           <div className="max-h-96 overflow-y-auto">

@@ -27,6 +27,22 @@ const chatMessageSchema = new mongoose.Schema({
     trim: true,
     maxlength: 1000,
   },
+  isEdited: {
+    type: Boolean,
+    default: false,
+  },
+  editedAt: {
+    type: Date,
+    default: null,
+  },
+  isDeleted: {
+    type: Boolean,
+    default: false,
+  },
+  deletedAt: {
+    type: Date,
+    default: null,
+  },
   createdAt: {
     type: Date,
     default: Date.now,

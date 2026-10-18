@@ -5,6 +5,7 @@ import {
   Clock, Play, BookOpen, X
 } from 'lucide-react';
 import { playlistService, adminService } from '../api/api';
+import Modal from './Modal';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fmtDur = (s) => {
@@ -336,65 +337,103 @@ export default function AdminPlaylistManager() {
       )}
 
       {/* ── Assign Modal ── */}
-      {assignModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-2xl p-6 border border-slate-200 dark:border-slate-700">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-black dark:text-white text-lg">Assign "{assignModal.title}"</h3>
-              <button onClick={() => setAssignModal(null)} className="p-1.5 rounded-lg hover:bg-white/10"><X size={16} /></button>
-            </div>
-
-            {assignErr && (
-              <div className="text-red-500 text-sm mb-3 bg-red-50 dark:bg-red-900/20 p-3 rounded-xl">{assignErr}</div>
-            )}
-
-            <div className="relative mb-3">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                value={userSearch}
-                onChange={e => setUserSearch(e.target.value)}
-                placeholder="Search users…"
-                className="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:text-white"
-              />
-            </div>
-
-            <div className="flex items-center justify-between text-xs font-bold mb-2 text-slate-500">
-              <span>{selectedUsers.length}/{filteredUsers.length} selected</span>
-              <button onClick={() => setSelectedUsers(filteredUsers.map(u => u._id))} className="text-indigo-400 hover:underline">Select All</button>
-            </div>
-
-            <div className="space-y-1.5 max-h-60 overflow-y-auto mb-4">
-              {filteredUsers.map(u => {
-                const checked = selectedUsers.includes(u._id);
-                return (
-                  <div
-                    key={u._id}
-                    onClick={() => toggleUser(u._id)}
-                    className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition ${checked ? 'border-indigo-400 bg-indigo-50/60 dark:bg-indigo-900/20' : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
-                  >
-                    <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${checked ? 'bg-indigo-500 border-indigo-500' : 'border-slate-300'}`}>
-                      {checked && <CheckCircle2 size={10} className="text-white" />}
-                    </div>
-                    <div className="w-7 h-7 rounded-full bg-[#EA580C] flex items-center justify-center text-white text-xs font-black flex-shrink-0">{u.name?.[0]?.toUpperCase()}</div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold dark:text-white truncate">{u.name}</p>
-                      <p className="text-xs text-slate-500 truncate">{u.email}</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <button
-              onClick={handleAssign}
-              disabled={assigning || !selectedUsers.length}
-              className="btn-primary w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              {assigning ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : <><CheckCircle2 size={16} /> Save Assignment ({selectedUsers.length} users)</>}
-            </button>
+      <Modal
+        isOpen={Boolean(assignModal)}
+        onClose={() => {
+          setAssignModal(null);
+          setAssignErr('');
+          setUserSearch('');
+        }}
+        title={`Assign "${assignModal?.title || 'Playlist'}"`}
+        subtitle="Select students to grant access to this playlist"
+        icon={<Users size={20} className="text-[#EA580C]" />}
+        maxWidth="max-w-md"
+      >
+        {assignErr && (
+          <div className="text-red-600 bg-red-50 text-xs font-bold mb-3 p-3 rounded-xl border border-red-200">
+            {assignErr}
           </div>
+        )}
+
+        <div className="relative mb-3">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            value={userSearch}
+            onChange={e => setUserSearch(e.target.value)}
+            placeholder="Search users…"
+            className="w-full pl-8 pr-3 py-2 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-xs text-[#431407] focus:outline-none focus:ring-2 focus:ring-[#EA580C]"
+          />
         </div>
-      )}
+
+        <div className="flex items-center justify-between text-xs font-bold mb-2 text-[#78716C]">
+          <span>{selectedUsers.length}/{filteredUsers.length} selected</span>
+          <button
+            type="button"
+            onClick={() => setSelectedUsers(filteredUsers.map(u => u._id))}
+            className="text-[#EA580C] hover:underline"
+          >
+            Select All
+          </button>
+        </div>
+
+        <div className="space-y-1.5 max-h-60 overflow-y-auto mb-4 pr-1">
+          {filteredUsers.map(u => {
+            const checked = selectedUsers.includes(u._id);
+            return (
+              <div
+                key={u._id}
+                onClick={() => toggleUser(u._id)}
+                className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition ${
+                  checked
+                    ? 'border-[#EA580C] bg-[#FFF7ED]'
+                    : 'border-[#FED7AA]/60 bg-white hover:bg-[#FFF7ED]/50'
+                }`}
+              >
+                <div
+                  className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                    checked ? 'bg-[#EA580C] border-[#EA580C]' : 'border-slate-300'
+                  }`}
+                >
+                  {checked && <CheckCircle2 size={10} className="text-white" />}
+                </div>
+                <div className="w-7 h-7 rounded-full bg-[#EA580C] flex items-center justify-center text-white text-xs font-black flex-shrink-0">
+                  {u.name?.[0]?.toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-[#431407] truncate">{u.name}</p>
+                  <p className="text-[11px] text-[#78716C] truncate">{u.email}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#FED7AA]">
+          <button
+            type="button"
+            onClick={() => setAssignModal(null)}
+            className="px-4 py-2 text-xs font-bold text-[#78716C] hover:bg-[#FFF7ED] rounded-xl transition"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleAssign}
+            disabled={assigning || !selectedUsers.length}
+            className="clay-btn-primary px-5 py-2 text-xs font-black flex items-center justify-center gap-1.5 disabled:opacity-50"
+          >
+            {assigning ? (
+              <>
+                <Loader2 size={14} className="animate-spin" /> Saving…
+              </>
+            ) : (
+              <>
+                <CheckCircle2 size={14} /> Save Assignment ({selectedUsers.length})
+              </>
+            )}
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

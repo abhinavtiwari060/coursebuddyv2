@@ -5,51 +5,47 @@
     <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
     <link rel="apple-touch-icon" href="/icon-192.svg">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="theme-color" content="#000000" />
-    <meta name="description" content="StudyMate – your smart study tracker. Track videos, streaks, goals and more." />
+    <meta name="theme-color" content="#EA580C" />
+    <meta name="description" content="StudyMate – Smart, distraction-free study platform for curriculum tracking and consistency." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&family=Outfit:wght@700;900&display=swap" rel="stylesheet" />
     <title>StudyMate</title>
   </head>
-  <body>
-    <!-- Splash Screen -->
-    <div id="splash-screen" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background-color:#0f172a;display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:9999;transition:opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1);">
-      <div style="position:relative; width:120px; height:120px; margin-bottom:30px;">
-        <!-- Spinning Ring -->
-        <div style="position:absolute; inset:0; border:4px solid rgba(249,115,22,0.1); border-top-color:#f97316; border-radius:50%; animation: spin 1.2s linear infinite;"></div>
-        <!-- Robot Icon Container -->
-        <div style="position:absolute; inset:15px; background:linear-gradient(135deg, #f97316, #f59e0b); border-radius:24px; display:flex; align-items:center; justify-content:center; box-shadow:0 10px 25px rgba(249,115,22,0.3); animation: breath 3s ease-in-out infinite;">
-          <svg viewBox="0 0 100 100" width="60" height="60">
-             <circle cx="40" cy="47" r="4" fill="white" />
-             <circle cx="60" cy="47" r="4" fill="white" />
-             <path d="M42 58c3 2 13 2 16 0" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" />
-             <path d="M50 15 L80 27 L50 39 L20 27 Z" fill="white" />
-             <path d="M80 27 L80 40" fill="none" stroke="white" stroke-width="2" />
-             <circle cx="80" cy="40" r="2" fill="white" />
-          </svg>
+  <body style="margin:0;padding:0;background-color:#FFF7ED;">
+    <!-- Modern Clean Initial Loader (Zero gradients, minimal orange-and-white theme) -->
+    <div id="splash-screen" style="position:fixed;inset:0;background-color:#FFF7ED;display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:9999;transition:opacity 0.25s ease-out;">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:12px;">
+        <span style="font-family:'Outfit', sans-serif;font-size:26px;font-weight:900;letter-spacing:-0.03em;color:#431407;">
+          Study<span style="color:#EA580C;">Mate</span>
+        </span>
+        <div style="width:48px;height:3px;background-color:#FED7AA;border-radius:99px;overflow:hidden;position:relative;">
+          <div style="position:absolute;top:0;left:0;bottom:0;width:40%;background-color:#EA580C;border-radius:99px;animation:studymate-pulse 1s ease-in-out infinite alternate;"></div>
         </div>
       </div>
-      <h1 style="color:white;font-family:'Outfit', sans-serif;margin:0;font-size:28px;font-weight:900;letter-spacing:-0.02em;">Study<span style="color:#f97316">Mate</span></h1>
-      <p style="color:#94a3b8;font-family:'Inter', sans-serif;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.2em;margin-top:12px;">Igniting Consistency</p>
     </div>
     <style>
-      @keyframes spin { to { transform: rotate(360deg); } }
-      @keyframes breath { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+      @keyframes studymate-pulse {
+        0% { left: 0%; width: 30%; }
+        100% { left: 70%; width: 30%; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #splash-screen * { animation: none !important; }
+      }
     </style>
 
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
     <script>
-      // Hide Splash screen strictly after React begins rendering
-      window.addEventListener('load', () => {
-        setTimeout(() => {
-          const splash = document.getElementById('splash-screen');
-          if (splash) {
+      // Clean fast dismissal once app script evaluates
+      window.addEventListener('DOMContentLoaded', () => {
+        const splash = document.getElementById('splash-screen');
+        if (splash) {
+          setTimeout(() => {
             splash.style.opacity = '0';
-            setTimeout(() => splash.remove(), 500);
-          }
-        }, 800); // give it a tiny buffer to feel professional
+            setTimeout(() => splash.remove(), 250);
+          }, 150);
+        }
       });
     </script>
   </body>

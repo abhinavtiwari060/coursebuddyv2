@@ -6,12 +6,13 @@ import { formatDuration } from '../utils/helpers';
 import {
   Users, Trash2, Clock, PlayCircle, LogOut, ShieldAlert, X, BookOpen,
   CheckCircle2, Trophy, Activity, Eye, Search, Flame, AlertTriangle, Send,
-  Palette, Bug, ToggleLeft, ToggleRight, Settings as SettingsIcon, ShieldCheck
+  Palette, Bug, ToggleLeft, ToggleRight, Settings as SettingsIcon, ShieldCheck,
+  Compass
 } from 'lucide-react';
 import AdminUserLimit from '../components/AdminUserLimit';
 import SuggestedPlaylistsAdmin from '../components/SuggestedPlaylistsAdmin';
-import AdminCourseCreator from '../components/AdminCourseCreator';
-import AdminPlaylistManager from '../components/AdminPlaylistManager';
+import AdminCourseManager from '../components/AdminCourseManager';
+import AdminCategoryRequests from '../components/AdminCategoryRequests';
 import AdminDeleteRequests from '../components/AdminDeleteRequests';
 
 function getInitials(name = '') {
@@ -19,13 +20,14 @@ function getInitials(name = '') {
 }
 
 const TABS = [
-  { id: 'users',           label: 'Users',           icon: <Users size={16} /> },
-  { id: 'leaderboard',     label: 'Leaderboard',     icon: <Trophy size={16} /> },
-  { id: 'courses',         label: 'Course Creator',  icon: <BookOpen size={16} /> },
-  { id: 'playlists',       label: 'Playlist Manager',icon: <PlayCircle size={16} /> },
-  { id: 'delete_requests', label: 'Delete Requests', icon: <Trash2 size={16} /> },
-  { id: 'bugs',            label: 'Bug Reports',     icon: <Bug size={16} /> },
-  { id: 'notifications',   label: 'Settings & Push', icon: <SettingsIcon size={16} /> },
+  { id: 'users',             label: 'Users',              icon: <Users size={16} /> },
+  { id: 'leaderboard',       label: 'Leaderboard',        icon: <Trophy size={16} /> },
+  { id: 'courses',           label: 'Course Management',  icon: <BookOpen size={16} /> },
+  { id: 'playlists',         label: 'Playlist Management',icon: <PlayCircle size={16} /> },
+  { id: 'category_requests', label: 'Category Requests',  icon: <Compass size={16} /> },
+  { id: 'delete_requests',   label: 'Delete Requests',    icon: <Trash2 size={16} /> },
+  { id: 'bugs',              label: 'Bug Reports',        icon: <Bug size={16} /> },
+  { id: 'notifications',     label: 'Settings & Push',    icon: <SettingsIcon size={16} /> },
 ];
 
 const FEATURE_LABELS = {
@@ -682,17 +684,24 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* ── Course Creator Tab ── */}
+        {/* ── Course Management Tab ── */}
         {activeTab === 'courses' && (
-          <div className="max-w-4xl mx-auto">
-            <AdminCourseCreator />
+          <div className="max-w-6xl mx-auto">
+            <AdminCourseManager initialTab="courses" />
           </div>
         )}
 
-        {/* ── Playlist Manager Tab ── */}
+        {/* ── Playlist Management Tab ── */}
         {activeTab === 'playlists' && (
-          <div className="max-w-5xl mx-auto">
-            <AdminPlaylistManager />
+          <div className="max-w-6xl mx-auto">
+            <AdminCourseManager initialTab="playlists" />
+          </div>
+        )}
+
+        {/* ── Category Requests Tab ── */}
+        {activeTab === 'category_requests' && (
+          <div className="max-w-6xl mx-auto">
+            <AdminCategoryRequests />
           </div>
         )}
 

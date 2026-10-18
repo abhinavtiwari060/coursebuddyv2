@@ -33,6 +33,7 @@ import DeleteRequest from './models/DeleteRequest.js';
 import Playlist from './models/Playlist.js';
 import Todo from './models/Todo.js';
 import ChatMessage from './models/ChatMessage.js';
+import CategoryRequest from './models/CategoryRequest.js';
 import StudySession from './models/StudySession.js';
 import WatchHistory from './models/WatchHistory.js';
 
@@ -125,9 +126,21 @@ const adminMiddleware = (req, res, next) => {
   next();
 };
 
-// ── Socket.IO Setup with Category Rooms & 48h TTL ─────────
+// ── Socket.IO Setup with Category Rooms, Isolation & 48h TTL ─────────
 const VALID_CHAT_ROOMS = ['government-exams', 'iit-neet', 'skills', 'other'];
 const userMessageRateMap = new Map();
+
+const getRoomPresence = (room) => {
+  const roomSet = io.sockets.adapter.rooms.get(room);
+  return roomSet ? roomSet.size : 0;
+};
+
+const broadcastPresence = (room) => {
+  if (VALID_CHAT_ROOMS.includes(room)) {
+    const count = getRoomPresence(room);
+    io.to(room).emit('room_presence', { room, count });
+  }
+};
 
 io.use(async (socket, next) => {
   try {
@@ -141,16 +154,19 @@ io.use(async (socket, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
-    const user = await User.findById(decoded.id).select('name email role avatar category');
+    const user = await User.findById(decoded.id).select('name email role avatar category status');
     if (!user) {
       return next(new Error('User not found'));
+    }
+    if (user.status === 'blocked') {
+      return next(new Error('Account is blocked'));
     }
 
     socket.user = {
       id: user._id.toString(),
       name: user.name,
       avatar: user.avatar || '',
-      category: user.category || 'other',
+      category: user.category || null,
       role: user.role,
     };
     next();
@@ -160,26 +176,68 @@ io.use(async (socket, next) => {
 });
 
 io.on('connection', (socket) => {
-  socket.on('join_room', (room) => {
-    if (VALID_CHAT_ROOMS.includes(room)) {
-      socket.join(room);
+  // Join private user room for direct signals (e.g. category migration notification)
+  socket.join(`user_${socket.user.id}`);
+
+  // Automatically join authorized category room on connect
+  if (socket.user.category && VALID_CHAT_ROOMS.includes(socket.user.category)) {
+    socket.join(socket.user.category);
+    broadcastPresence(socket.user.category);
+  }
+
+  // Join room request (Strict category authorization enforced on server)
+  socket.on('join_room', async (room) => {
+    if (!VALID_CHAT_ROOMS.includes(room)) return;
+
+    // Fetch fresh user category from DB to prevent stale state bypass
+    const dbUser = await User.findById(socket.user.id).select('category role');
+    if (!dbUser) return;
+
+    if (dbUser.role !== 'admin' && dbUser.category !== room) {
+      socket.emit('error_message', { error: 'Access restricted: You may only access your assigned category room.' });
+      return;
     }
+
+    // Leave other category rooms before joining new one
+    VALID_CHAT_ROOMS.forEach((r) => {
+      if (r !== room && socket.rooms.has(r)) {
+        socket.leave(r);
+        broadcastPresence(r);
+      }
+    });
+
+    socket.join(room);
+    broadcastPresence(room);
   });
 
   socket.on('leave_room', (room) => {
     socket.leave(room);
+    broadcastPresence(room);
   });
 
+  // Send message
   socket.on('send_message', async (data, callback) => {
     try {
       const { room, message } = data;
       if (!VALID_CHAT_ROOMS.includes(room)) {
-        if (callback) callback({ error: 'Invalid room' });
+        if (callback) callback({ error: 'Invalid chat room' });
+        return;
+      }
+
+      // Re-verify student's current category directly from MongoDB
+      const dbUser = await User.findById(socket.user.id).select('category role name avatar status');
+      if (!dbUser || dbUser.status === 'blocked') {
+        if (callback) callback({ error: 'User unauthorized or account blocked' });
+        return;
+      }
+
+      if (dbUser.role !== 'admin' && dbUser.category !== room) {
+        if (callback) callback({ error: 'Forbidden: You can only send messages in your assigned category.' });
         return;
       }
 
       if (!message || typeof message !== 'string') {
-        if (callback) callback({ error: 'Message content required' });
+        if (callback) callback({ error: 'Message content is required' });
         return;
       }
 
@@ -199,12 +257,14 @@ io.on('connection', (socket) => {
 
       const chatMsg = new ChatMessage({
         room,
-        senderId: socket.user.id,
-        senderName: socket.user.name,
-        senderAvatar: socket.user.avatar || '',
+        senderId: dbUser._id,
+        senderName: dbUser.name,
+        senderAvatar: dbUser.avatar || '',
         message: trimmed,
+        isEdited: false,
+        isDeleted: false,
         createdAt: new Date(),
-        expiresAt: new Date(now + 48 * 60 * 60 * 1000),
+        expiresAt: new Date(now + 48 * 60 * 60 * 1000), // Exactly 48 hours TTL
       });
       await chatMsg.save();
 
@@ -215,24 +275,145 @@ io.on('connection', (socket) => {
         senderName: chatMsg.senderName,
         senderAvatar: chatMsg.senderAvatar,
         message: chatMsg.message,
+        isEdited: false,
+        isDeleted: false,
         createdAt: chatMsg.createdAt,
       };
 
       io.to(room).emit('receive_message', payload);
       if (callback) callback({ success: true, message: payload });
     } catch (err) {
-      console.error('Socket message error:', err);
+      console.error('Socket send_message error:', err);
       if (callback) callback({ error: 'Failed to send message' });
     }
   });
+
+  // Edit message
+  socket.on('edit_message', async (data, callback) => {
+    try {
+      const { messageId, newContent } = data;
+      if (!messageId || !newContent || typeof newContent !== 'string') {
+        if (callback) callback({ error: 'Message ID and new content required' });
+        return;
+      }
+
+      const trimmed = newContent.trim();
+      if (trimmed.length === 0 || trimmed.length > 1000) {
+        if (callback) callback({ error: 'Message must be between 1 and 1000 characters' });
+        return;
+      }
+
+      const chatMsg = await ChatMessage.findById(messageId);
+      if (!chatMsg) {
+        if (callback) callback({ error: 'Message not found' });
+        return;
+      }
+      if (chatMsg.isDeleted) {
+        if (callback) callback({ error: 'Cannot edit a deleted message' });
+        return;
+      }
+
+      // Check 48h expiry
+      const ageMs = Date.now() - new Date(chatMsg.createdAt).getTime();
+      if (ageMs > 48 * 60 * 60 * 1000) {
+        if (callback) callback({ error: 'Expired messages cannot be edited' });
+        return;
+      }
+
+      // Strict ownership check
+      if (chatMsg.senderId.toString() !== socket.user.id) {
+        if (callback) callback({ error: 'Forbidden: You can only edit your own messages' });
+        return;
+      }
+
+      // Re-verify category authorization
+      const dbUser = await User.findById(socket.user.id).select('category role');
+      if (dbUser.role !== 'admin' && dbUser.category !== chatMsg.room) {
+        if (callback) callback({ error: 'Forbidden: Message does not belong to your authorized category.' });
+        return;
+      }
+
+      chatMsg.message = trimmed;
+      chatMsg.isEdited = true;
+      chatMsg.editedAt = new Date();
+      await chatMsg.save();
+
+      const payload = {
+        _id: chatMsg._id,
+        room: chatMsg.room,
+        message: chatMsg.message,
+        isEdited: true,
+        editedAt: chatMsg.editedAt,
+      };
+
+      io.to(chatMsg.room).emit('edit_message', payload);
+      if (callback) callback({ success: true, message: payload });
+    } catch (err) {
+      console.error('Socket edit_message error:', err);
+      if (callback) callback({ error: 'Failed to edit message' });
+    }
+  });
+
+  // Delete message (Soft deletion strategy)
+  socket.on('delete_message', async (data, callback) => {
+    try {
+      const { messageId } = data;
+      if (!messageId) {
+        if (callback) callback({ error: 'Message ID required' });
+        return;
+      }
+
+      const chatMsg = await ChatMessage.findById(messageId);
+      if (!chatMsg) {
+        if (callback) callback({ error: 'Message not found' });
+        return;
+      }
+
+      // Strict ownership check
+      if (chatMsg.senderId.toString() !== socket.user.id && socket.user.role !== 'admin') {
+        if (callback) callback({ error: 'Forbidden: You can only delete your own messages' });
+        return;
+      }
+
+      // Soft delete: marks as deleted while preserving 48h TTL integrity
+      chatMsg.isDeleted = true;
+      chatMsg.message = 'This message was deleted';
+      chatMsg.deletedAt = new Date();
+      await chatMsg.save();
+
+      const payload = {
+        _id: chatMsg._id,
+        room: chatMsg.room,
+        isDeleted: true,
+        message: 'This message was deleted',
+      };
+
+      io.to(chatMsg.room).emit('delete_message', payload);
+      if (callback) callback({ success: true });
+    } catch (err) {
+      console.error('Socket delete_message error:', err);
+      if (callback) callback({ error: 'Failed to delete message' });
+    }
+  });
+
+  socket.on('disconnect', () => {
+    VALID_CHAT_ROOMS.forEach((r) => {
+      broadcastPresence(r);
+    });
+  });
 });
 
-// GET /api/chat/messages/:room
+// GET /api/chat/messages/:room — Load active non-expired messages for authorized room
 app.get('/api/chat/messages/:room', authMiddleware, async (req, res) => {
   try {
     const { room } = req.params;
     if (!VALID_CHAT_ROOMS.includes(room)) {
       return res.status(400).json({ error: 'Invalid room' });
+    }
+
+    // Strict Category Isolation: regular students cannot fetch history of other rooms
+    if (req.user.role !== 'admin' && req.user.category !== room) {
+      return res.status(403).json({ error: 'Access restricted: You may only view messages in your assigned category room.' });
     }
 
     const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
@@ -244,7 +425,102 @@ app.get('/api/chat/messages/:room', authMiddleware, async (req, res) => {
       .limit(100)
       .lean();
 
-    res.json(messages);
+    const sanitized = messages.map((m) => ({
+      _id: m._id,
+      room: m.room,
+      senderId: m.senderId,
+      senderName: m.senderName,
+      senderAvatar: m.senderAvatar,
+      message: m.isDeleted ? 'This message was deleted' : m.message,
+      isEdited: !!m.isEdited,
+      editedAt: m.editedAt,
+      isDeleted: !!m.isDeleted,
+      createdAt: m.createdAt,
+    }));
+
+    res.json(sanitized);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/chat/messages/:id — REST Edit Message
+app.put('/api/chat/messages/:id', authMiddleware, async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message || typeof message !== 'string') {
+      return res.status(400).json({ error: 'Message content is required' });
+    }
+
+    const trimmed = message.trim();
+    if (trimmed.length === 0 || trimmed.length > 1000) {
+      return res.status(400).json({ error: 'Message must be between 1 and 1000 characters' });
+    }
+
+    const chatMsg = await ChatMessage.findById(req.params.id);
+    if (!chatMsg) return res.status(404).json({ error: 'Message not found' });
+    if (chatMsg.isDeleted) return res.status(400).json({ error: 'Cannot edit a deleted message' });
+
+    // Check expiry
+    const ageMs = Date.now() - new Date(chatMsg.createdAt).getTime();
+    if (ageMs > 48 * 60 * 60 * 1000) {
+      return res.status(400).json({ error: 'Expired messages cannot be edited' });
+    }
+
+    // Ownership check
+    if (chatMsg.senderId.toString() !== req.user.id) {
+      return res.status(403).json({ error: 'You can only edit your own messages' });
+    }
+
+    if (req.user.role !== 'admin' && req.user.category !== chatMsg.room) {
+      return res.status(403).json({ error: 'Category mismatch' });
+    }
+
+    chatMsg.message = trimmed;
+    chatMsg.isEdited = true;
+    chatMsg.editedAt = new Date();
+    await chatMsg.save();
+
+    const payload = {
+      _id: chatMsg._id,
+      room: chatMsg.room,
+      message: chatMsg.message,
+      isEdited: true,
+      editedAt: chatMsg.editedAt,
+    };
+
+    io.to(chatMsg.room).emit('edit_message', payload);
+    res.json(payload);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/chat/messages/:id — REST Soft Delete Message
+app.delete('/api/chat/messages/:id', authMiddleware, async (req, res) => {
+  try {
+    const chatMsg = await ChatMessage.findById(req.params.id);
+    if (!chatMsg) return res.status(404).json({ error: 'Message not found' });
+
+    // Ownership check
+    if (chatMsg.senderId.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'You can only delete your own messages' });
+    }
+
+    chatMsg.isDeleted = true;
+    chatMsg.message = 'This message was deleted';
+    chatMsg.deletedAt = new Date();
+    await chatMsg.save();
+
+    const payload = {
+      _id: chatMsg._id,
+      room: chatMsg.room,
+      isDeleted: true,
+      message: 'This message was deleted',
+    };
+
+    io.to(chatMsg.room).emit('delete_message', payload);
+    res.json({ success: true, message: 'Message deleted' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -725,10 +1001,19 @@ app.put('/api/profile', authMiddleware, async (req, res) => {
     if (name) updates.name = name;
     if (bio !== undefined) updates.bio = bio;
     if (avatar !== undefined) updates.avatar = avatar;
+
     if (category !== undefined) {
       const validCategories = ['government-exams', 'iit-neet', 'skills', 'other'];
       if (category && !validCategories.includes(category)) {
         return res.status(400).json({ error: 'Invalid learning category' });
+      }
+
+      // Check if student's category is already set
+      const existingUser = await User.findById(req.user.id);
+      if (existingUser && existingUser.category && existingUser.category !== category && existingUser.role !== 'admin') {
+        return res.status(403).json({
+          error: 'Your learning category is locked. Please submit a Category Change Request from your profile.',
+        });
       }
       updates.category = category;
     }
@@ -748,18 +1033,217 @@ app.put('/api/profile', authMiddleware, async (req, res) => {
   }
 });
 
-// ── Course Routes ─────────────────────
+// ── Category Change Request Routes ─────────────────────────
+
+// Student: Submit a Category Change Request
+app.post('/api/category-requests', authMiddleware, async (req, res) => {
+  try {
+    const { requestedCategory, reason } = req.body;
+    const validCategories = ['government-exams', 'iit-neet', 'skills', 'other'];
+    if (!requestedCategory || !validCategories.includes(requestedCategory)) {
+      return res.status(400).json({ error: 'Please select a valid learning category' });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (user.category === requestedCategory) {
+      return res.status(400).json({ error: 'Requested category must be different from your current category' });
+    }
+
+    // Prevent duplicate pending requests
+    const existingPending = await CategoryRequest.findOne({
+      userId: req.user.id,
+      status: 'pending',
+    });
+    if (existingPending) {
+      return res.status(400).json({ error: 'You already have a category change request pending admin review.' });
+    }
+
+    const catReq = new CategoryRequest({
+      userId: req.user.id,
+      currentCategory: user.category || 'skills',
+      requestedCategory,
+      reason: reason?.trim() || '',
+      status: 'pending',
+    });
+    await catReq.save();
+
+    res.json({ success: true, message: 'Category change request submitted for admin review.', request: catReq });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Student: Get my latest Category Change Request
+app.get('/api/category-requests/my', authMiddleware, async (req, res) => {
+  try {
+    const request = await CategoryRequest.findOne({ userId: req.user.id })
+      .sort({ createdAt: -1 })
+      .lean();
+    res.json(request || null);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: Get all Category Change Requests
+app.get('/api/admin/category-requests', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const requests = await CategoryRequest.find()
+      .populate('userId', 'name email avatar category')
+      .populate('reviewedBy', 'name')
+      .sort({ createdAt: -1 })
+      .lean();
+    res.json(requests);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: Approve Category Change Request
+app.post('/api/admin/category-requests/:id/approve', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const catReq = await CategoryRequest.findById(req.params.id);
+    if (!catReq) return res.status(404).json({ error: 'Request not found' });
+    if (catReq.status !== 'pending') {
+      return res.status(400).json({ error: `Request already ${catReq.status}` });
+    }
+
+    const oldCategory = catReq.currentCategory;
+    const newCategory = catReq.requestedCategory;
+
+    // 1. Update request status
+    catReq.status = 'approved';
+    catReq.reviewedBy = req.user.id;
+    catReq.reviewedAt = new Date();
+    await catReq.save();
+
+    // 2. Update student category in MongoDB
+    const updatedUser = await User.findByIdAndUpdate(
+      catReq.userId,
+      { category: newCategory },
+      { new: true }
+    ).select('-password');
+
+    // 3. Immediately migrate socket room access and notify student client
+    const userRoom = `user_${catReq.userId.toString()}`;
+    io.to(userRoom).emit('category_updated', {
+      previousCategory: oldCategory,
+      newCategory: newCategory,
+      user: updatedUser,
+    });
+
+    // Move any connected sockets for this user to new room
+    const socketsInUserRoom = await io.in(userRoom).fetchSockets();
+    for (const s of socketsInUserRoom) {
+      if (s.rooms.has(oldCategory)) {
+        s.leave(oldCategory);
+      }
+      s.join(newCategory);
+      s.user.category = newCategory;
+    }
+
+    // Refresh presence in both rooms
+    broadcastPresence(oldCategory);
+    broadcastPresence(newCategory);
+
+    res.json({
+      success: true,
+      message: `Category change approved! Student migrated from ${oldCategory} to ${newCategory}.`,
+      request: catReq,
+      user: updatedUser,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: Reject Category Change Request
+app.post('/api/admin/category-requests/:id/reject', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const catReq = await CategoryRequest.findById(req.params.id);
+    if (!catReq) return res.status(404).json({ error: 'Request not found' });
+    if (catReq.status !== 'pending') {
+      return res.status(400).json({ error: `Request already ${catReq.status}` });
+    }
+
+    catReq.status = 'rejected';
+    catReq.reviewedBy = req.user.id;
+    catReq.reviewedAt = new Date();
+    await catReq.save();
+
+    // Notify student client in real time
+    const userRoom = `user_${catReq.userId.toString()}`;
+    io.to(userRoom).emit('category_request_rejected', { request: catReq });
+
+    res.json({ success: true, message: 'Category change request rejected.', request: catReq });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Course Routes (Student & General) ─────────────────────
 app.get('/api/courses', authMiddleware, async (req, res) => {
-  const courses = await Course.find({ userId: req.user.id, isPendingDelete: { $ne: true } });
-  res.json(courses);
+  try {
+    const query = { isPendingDelete: { $ne: true } };
+    if (req.query.category && req.query.category !== 'all') {
+      query.category = req.query.category;
+    }
+    const courses = await Course.find(query).sort({ createdAt: -1 });
+    res.json(courses);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/courses/my', authMiddleware, async (req, res) => {
+  try {
+    const userVideos = await Video.find({ userId: req.user.id, isPendingDelete: { $ne: true } }).select('course completed duration').lean();
+    const courseNames = [...new Set(userVideos.map(v => v.course).filter(Boolean))];
+
+    const userCourses = await Course.find({ userId: req.user.id, isPendingDelete: { $ne: true } }).lean();
+    for (const uc of userCourses) {
+      if (!courseNames.includes(uc.name)) courseNames.push(uc.name);
+    }
+
+    const courses = await Course.find({ name: { $in: courseNames }, isPendingDelete: { $ne: true } }).lean();
+
+    const result = courses.map(c => {
+      const vids = userVideos.filter(v => v.course === c.name);
+      const totalVideos = vids.length;
+      const completedVideos = vids.filter(v => v.completed).length;
+      const progress = totalVideos > 0 ? Math.round((completedVideos / totalVideos) * 100) : 0;
+      return {
+        ...c,
+        totalVideos,
+        completedVideos,
+        progress
+      };
+    });
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post('/api/courses', authMiddleware, async (req, res) => {
   try {
-    const existing = await Course.findOne({ name: req.body.name, userId: req.user.id });
+    const { name, category, subcategory, description, thumbnail } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'Course name is required' });
+
+    const existing = await Course.findOne({ name: name.trim(), userId: req.user.id });
     if (existing) return res.status(400).json({ error: 'Course already exists' });
 
-    const course = new Course({ name: req.body.name, userId: req.user.id });
+    const course = new Course({
+      name: name.trim(),
+      category: category || 'skills',
+      subcategory: subcategory?.trim() || '',
+      description: description?.trim() || '',
+      thumbnail: thumbnail?.trim() || '',
+      userId: req.user.id
+    });
     await course.save();
     res.json(course);
   } catch (err) {
@@ -1753,6 +2237,114 @@ app.post('/api/admin/courses/assign', authMiddleware, adminMiddleware, async (re
   }
 });
 
+// ── Admin Course Management ─────────────────────
+
+/** GET /api/admin/courses — list all courses with metrics */
+app.get('/api/admin/courses', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const courses = await Course.find({ isPendingDelete: { $ne: true } }).sort({ createdAt: -1 }).lean();
+    const courseIds = courses.map(c => c._id);
+    const playlists = await Playlist.find({ courseId: { $in: courseIds } }).select('courseId videoCount totalDuration').lean();
+
+    const playlistMap = {};
+    for (const pl of playlists) {
+      const cId = String(pl.courseId);
+      if (!playlistMap[cId]) {
+        playlistMap[cId] = { playlistCount: 0, videoCount: 0, totalDuration: 0 };
+      }
+      playlistMap[cId].playlistCount += 1;
+      playlistMap[cId].videoCount += (pl.videoCount || 0);
+      playlistMap[cId].totalDuration += (pl.totalDuration || 0);
+    }
+
+    const result = courses.map(c => ({
+      ...c,
+      playlistCount: playlistMap[String(c._id)]?.playlistCount || 0,
+      videoCount: playlistMap[String(c._id)]?.videoCount || 0,
+      totalDuration: playlistMap[String(c._id)]?.totalDuration || 0,
+    }));
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** POST /api/admin/courses — create a new course */
+app.post('/api/admin/courses', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { name, category, subcategory, description, thumbnail } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'Course name is required' });
+
+    const existing = await Course.findOne({ name: name.trim(), isPendingDelete: { $ne: true } });
+    if (existing) return res.status(400).json({ error: 'A course with this name already exists' });
+
+    const course = await Course.create({
+      name: name.trim(),
+      category: category || 'skills',
+      subcategory: subcategory?.trim() || '',
+      description: description?.trim() || '',
+      thumbnail: thumbnail?.trim() || '',
+      userId: req.user.id
+    });
+    res.json(course);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** PUT /api/admin/courses/:id — update an existing course */
+app.put('/api/admin/courses/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { name, category, subcategory, description, thumbnail } = req.body;
+    const course = await Course.findById(req.params.id);
+    if (!course) return res.status(404).json({ error: 'Course not found' });
+
+    const oldName = course.name;
+    if (name?.trim()) course.name = name.trim();
+    if (category) course.category = category;
+    if (subcategory !== undefined) course.subcategory = subcategory.trim();
+    if (description !== undefined) course.description = description.trim();
+    if (thumbnail !== undefined) course.thumbnail = thumbnail.trim();
+    await course.save();
+
+    if (name && name.trim() !== oldName) {
+      await Playlist.updateMany({ courseId: course._id }, { $set: { courseName: course.name } });
+      await Video.updateMany({ course: oldName }, { $set: { course: course.name } });
+    }
+
+    res.json(course);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** DELETE /api/admin/courses/:id — delete course and all linked playlists and videos */
+app.delete('/api/admin/courses/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const course = await Course.findById(req.params.id);
+    if (!course) return res.status(404).json({ error: 'Course not found' });
+
+    await Course.findByIdAndDelete(req.params.id);
+    await Playlist.deleteMany({ courseId: course._id });
+    await Video.deleteMany({ course: course.name });
+
+    res.json({ message: 'Course and linked playlists deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** GET /api/admin/courses/:id/playlists — get all playlists for this course */
+app.get('/api/admin/courses/:id/playlists', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const playlists = await Playlist.find({ courseId: req.params.id }).sort({ createdAt: -1 });
+    res.json(playlists);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /**
  * GET /api/admin/courses/assigned
  * Lists all courses assigned by admin (courses that appear across multiple users with same name).
@@ -1948,8 +2540,10 @@ app.get('/api/admin/playlists', authMiddleware, adminMiddleware, async (req, res
 /** POST /api/admin/playlists/import — import a playlist and its videos */
 app.post('/api/admin/playlists/import', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const { playlistUrl, courseName, category, subcategory } = req.body;
-    if (!playlistUrl || !courseName) return res.status(400).json({ error: 'URL and Course Name are required' });
+    const { playlistUrl, courseId, courseName, category, subcategory } = req.body;
+    if (!playlistUrl || (!courseId && !courseName)) {
+      return res.status(400).json({ error: 'Playlist URL and Course selection are required' });
+    }
 
     const apiKey = process.env.YOUTUBE_API_KEY;
     if (!apiKey) return res.status(503).json({ error: 'YOUTUBE_API_KEY missing' });
@@ -2014,17 +2608,30 @@ app.post('/api/admin/playlists/import', authMiddleware, adminMiddleware, async (
     videos.sort((a, b) => (a.position || 0) - (b.position || 0));
 
     // Find or create course
-    let course = await Course.findOne({ name: courseName });
-    if (!course) {
-      course = await Course.create({
-        name: courseName,
-        userId: req.user.id,
-        category: category || 'skills',
-        subcategory: subcategory || ''
-      });
-    } else if (category) {
-      course.category = category;
-      if (subcategory) course.subcategory = subcategory;
+    let course = null;
+    if (courseId) {
+      course = await Course.findById(courseId);
+    }
+    if (!course && courseName) {
+      course = await Course.findOne({ name: courseName.trim(), isPendingDelete: { $ne: true } });
+      if (!course) {
+        course = await Course.create({
+          name: courseName.trim(),
+          userId: req.user.id,
+          category: category || 'skills',
+          subcategory: subcategory || ''
+        });
+      } else if (category && (!course.category || course.category === 'general')) {
+        course.category = category;
+        if (subcategory) course.subcategory = subcategory;
+        await course.save();
+      }
+    }
+    if (!course) return res.status(400).json({ error: 'Valid course could not be determined' });
+
+    // Set thumbnail on course if course doesn't have one
+    if (!course.thumbnail && plData.snippet.thumbnails?.medium?.url) {
+      course.thumbnail = plData.snippet.thumbnails?.medium?.url;
       await course.save();
     }
 
@@ -2034,8 +2641,8 @@ app.post('/api/admin/playlists/import', authMiddleware, adminMiddleware, async (
       {
         courseId: course._id,
         courseName: course.name,
-        category: category || 'skills',
-        subcategory: subcategory || '',
+        category: course.category || category || 'skills',
+        subcategory: course.subcategory || subcategory || '',
         playlistUrl: `https://www.youtube.com/playlist?list=${playlistId}`,
         title: plData.snippet.title,
         description: plData.snippet.description,
@@ -2050,7 +2657,7 @@ app.post('/api/admin/playlists/import', authMiddleware, adminMiddleware, async (
       { upsert: true, new: true }
     );
 
-    res.json({ message: 'Playlist imported successfully', playlist });
+    res.json({ message: 'Playlist imported successfully', playlist, course });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

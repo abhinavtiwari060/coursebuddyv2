@@ -19,7 +19,6 @@ import Thoughts from './pages/Thoughts';
 import VideoPlayer from './pages/VideoPlayer';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import ErrorBoundary from './components/ErrorBoundary';
-import GlobalNav from './components/GlobalNav';
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
@@ -87,7 +86,6 @@ export default function App() {
       <Router>
         <AuthProvider>
           <ErrorBoundary>
-            <GlobalNav />
             <Routes>
               <Route path="/login"  element={<Login />} />
               <Route path="/signup" element={<Signup />} />
@@ -102,6 +100,7 @@ export default function App() {
               <Route path="/thoughts" element={<FeatureGate feature="canUseCommunity"><Thoughts /></FeatureGate>} />
               <Route path="/course/:courseId/video/:videoId" element={<ProtectedRoute><VideoPlayer /></ProtectedRoute>} />
               <Route path="/privacy" element={<PrivacyPolicy />} />
+              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </ErrorBoundary>
