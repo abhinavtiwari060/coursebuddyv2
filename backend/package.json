@@ -20,7 +20,8 @@
     "groq-sdk": "^1.1.2",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^7.6.3",
-    "nodemailer": "^8.0.5"
+    "nodemailer": "^8.0.5",
+    "socket.io": "^4.8.4"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

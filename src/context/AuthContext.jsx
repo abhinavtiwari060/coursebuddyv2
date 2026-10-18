@@ -132,9 +132,17 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
-  return (
-    <AuthContext.Provider value={{ user, loading, login, signup, loginWithGoogle, logout, refreshUser }}>
+  const updateUserCategory = async (category) => {
+    const data = await profileService.update({ category });
+    const updated = data.user || data;
+    const merged = { ...user, ...updated, category };
+    localStorage.setItem('studymate_user', JSON.stringify(merged));
+    setUser(merged);
+    return merged;
+  };
 
+  return (
+    <AuthContext.Provider value={{ user, setUser, loading, login, signup, loginWithGoogle, logout, refreshUser, updateUserCategory }}>
       {!loading && children}
     </AuthContext.Provider>
   );

@@ -25,13 +25,13 @@ export default function QuizResults() {
   }, [id]);
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 to-slate-900">
+    <div className="min-h-screen flex items-center justify-center bg-slate-950">
       <div className="w-12 h-12 border-4 border-orange-500/30 border-t-orange-500 rounded-full animate-spin" />
     </div>
   );
 
   if (error) return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 to-slate-900 text-white text-center px-4">
+    <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white text-center px-4">
       <div>
         <p className="text-red-400 text-lg mb-4">{error}</p>
         <Link to="/dashboard" className="text-orange-400 hover:underline">Back to Dashboard</Link>
@@ -43,7 +43,7 @@ export default function QuizResults() {
   const scorePercent = questions.length > 0 ? Math.round((attempt.score / questions.length) * 100) : 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white px-4 py-8" style={{fontFamily:"'Inter',sans-serif"}}>
+    <div className="min-h-screen bg-slate-950 text-white px-4 py-8" style={{fontFamily:"'Inter',sans-serif"}}>
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet" />
       <div className="max-w-2xl mx-auto">
         
@@ -124,7 +124,7 @@ export default function QuizResults() {
 
         {/* Actions */}
         <div className="flex flex-col sm:flex-row gap-3">
-          <Link to={`/quiz/${id}/leaderboard`} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm text-center transition flex items-center justify-center gap-2">
+          <Link to={`/quiz/${id}/leaderboard`} className="flex-1 py-3 rounded-xl bg-[#EA580C] hover:bg-[#C2410C] text-white font-bold text-sm text-center transition flex items-center justify-center gap-2">
             <Trophy size={16} /> Leaderboard
           </Link>
           <Link to="/dashboard" className="flex-1 py-3 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-sm text-center transition">

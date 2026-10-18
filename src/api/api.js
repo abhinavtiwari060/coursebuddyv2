@@ -118,7 +118,27 @@ export const streakService = {
 
 // ── Leaderboard Service ──────────────────
 export const leaderboardService = {
-  get: () => api.get("/api/leaderboard").then((r) => r.data),
+  get: (timeframe = 'all') => api.get("/api/leaderboard", { params: { timeframe } }).then((r) => r.data),
+};
+
+// ── To-Do Service ────────────────────────
+export const todoService = {
+  getAll: (params) => api.get("/api/todos", { params }).then((r) => r.data),
+  create: (data) => api.post("/api/todos", data).then((r) => r.data),
+  update: (id, data) => api.put(`/api/todos/${id}`, data).then((r) => r.data),
+  toggle: (id) => api.patch(`/api/todos/${id}/toggle`).then((r) => r.data),
+  delete: (id) => api.delete(`/api/todos/${id}`).then((r) => r.data),
+};
+
+// ── Watch Service (Verified Tracking) ─────
+export const watchService = {
+  heartbeat: (data) => api.post("/api/watch/heartbeat", data).then((r) => r.data),
+  getStats: () => api.get("/api/watch/stats").then((r) => r.data),
+};
+
+// ── Chat Service ─────────────────────────
+export const chatService = {
+  getHistory: (room) => api.get(`/api/chat/messages/${room}`).then((r) => r.data),
 };
 
 // ── Bug Report Service ───────────────────

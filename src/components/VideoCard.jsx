@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Youtube, Send, CheckCircle2, Clock, Check, FileText, Trash2, Hash, BookOpen } from 'lucide-react';
+import { Youtube, Send, CheckCircle2, Clock, Check, FileText, Trash2, Hash, BookOpen, Play } from 'lucide-react';
 import { formatDuration } from '../utils/helpers';
 
 export default function VideoCard({ video, onToggleComplete, onUpdateNotes, onDelete, sequenceNumber }) {
@@ -10,11 +10,11 @@ export default function VideoCard({ video, onToggleComplete, onUpdateNotes, onDe
   const [notes, setNotes] = useState(video.notes || '');
   const [isToggling, setIsToggling] = useState(false);
 
-  // ✅ FIX: Always use _id first (MongoDB), fallback to id
   const videoId = video._id || video.id;
+  const courseParam = video.courseId || video.course;
 
   const saveNotes = () => {
-    onUpdateNotes(videoId, notes);
+    if (onUpdateNotes) onUpdateNotes(videoId, notes);
     setShowNotes(false);
   };
 
@@ -29,127 +29,144 @@ export default function VideoCard({ video, onToggleComplete, onUpdateNotes, onDe
   };
 
   return (
-    <div className={`video-card p-5 rounded-2xl flex flex-col gap-3 relative overflow-hidden backdrop-blur-sm transition-all duration-300
-      ${video.completed
-        ? 'glass-card opacity-80 border-green-200 dark:border-green-900/30 bg-green-50/50 dark:bg-green-900/10'
-        : 'glass-card bg-white/70 dark:bg-slate-800/70 hover:bg-white/90 dark:hover:bg-slate-800/90'
+    <div
+      className={`clay-card p-4 sm:p-5 flex flex-col gap-3 relative transition ${
+        video.completed
+          ? 'bg-[#FFF7ED]/60 border-green-300'
+          : 'bg-white hover:border-[#FB923C]'
       }`}
     >
-      {/* Decorative top border */}
-      <div className={`absolute top-0 left-0 right-0 h-1 ${video.completed ? 'bg-green-400' : 'bg-gradient-to-r from-orange-400 to-amber-400'}`} />
+      {/* Top accent line */}
+      <div
+        className={`absolute top-0 left-0 right-0 h-1 rounded-t-2xl ${
+          video.completed ? 'bg-green-600' : 'bg-[#EA580C]'
+        }`}
+      />
 
-      {/* Sequence number badge */}
-      {sequenceNumber !== undefined && (
-        <div className={`absolute top-3 left-3 w-6 h-6 rounded-full flex items-center justify-center text-xs font-black z-10 ${video.completed ? 'bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400' : 'bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-400'}`}>
-          {sequenceNumber}
-        </div>
-      )}
-
-      {/* Video Thumbnail / Header */}
-      <div className="flex gap-4">
-        {video.thumbnail && (
-          <div 
-            onClick={() => navigate(`/course/${video.courseId || video.course}/video/${videoId}`)} 
-            className="flex-shrink-0 group relative rounded-xl overflow-hidden block w-24 h-16 bg-slate-200 dark:bg-slate-700 cursor-pointer"
+      {/* Main card content */}
+      <div className="flex gap-3.5">
+        {video.thumbnail ? (
+          <div
+            onClick={() => navigate(`/course/${courseParam}/video/${videoId}`)}
+            className="flex-shrink-0 group relative rounded-xl overflow-hidden w-24 h-16 bg-[#FFF7ED] border border-[#FED7AA] cursor-pointer"
           >
-            <img src={video.thumbnail} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-            <div className="absolute inset-0 bg-black/20 group-hover:bg-black/0 transition-colors" />
-            <div className="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
-              {formatDuration(video.duration) || '🔗'}
+            <img
+              src={video.thumbnail}
+              alt=""
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+            />
+            <div className="absolute inset-0 bg-black/15 group-hover:bg-black/0 transition-colors" />
+            <div className="absolute bottom-1 right-1 bg-black/80 text-white text-[9px] font-bold px-1 rounded">
+              {formatDuration(video.duration) || '▶'}
             </div>
           </div>
-        )}
-        
-        <div className={`flex-1 min-w-0 flex justify-between items-start gap-4 ${sequenceNumber !== undefined ? 'pl-5' : ''}`}>
-          <h3 className={`font-semibold text-base leading-tight line-clamp-2 flex-1 mt-1 cursor-pointer hover:text-orange-500 transition-colors ${video.completed ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-900 dark:text-white'}`}
-            onClick={() => navigate(`/course/${video.courseId || video.course}/video/${videoId}`)}
+        ) : (
+          <div
+            onClick={() => navigate(`/course/${courseParam}/video/${videoId}`)}
+            className="flex-shrink-0 w-24 h-16 rounded-xl bg-[#FFF7ED] border border-[#FED7AA] flex items-center justify-center text-[#EA580C] cursor-pointer hover:bg-[#FED7AA]/40"
           >
-            {video.title}
-          </h3>
-          <div className="flex-shrink-0 mt-1">
-            <div className="p-2 rounded-xl bg-slate-100 dark:bg-slate-700/50 hover:bg-orange-100 dark:hover:bg-slate-600 transition-colors inline-block group">
-              {isYouTube ? (
-                <Youtube className="text-red-500 group-hover:scale-110 transition-transform" size={20} />
-              ) : video.platform === 'Telegram' ? (
-                <Send className="text-sky-500 group-hover:scale-110 transition-transform" size={20} />
-              ) : (
-                <div className="w-5 h-5 rounded-full bg-orange-200 dark:bg-slate-600 group-hover:scale-110 transition-transform" />
+            <Play size={20} />
+          </div>
+        )}
+
+        <div className="flex-1 min-w-0 flex justify-between items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <h3
+              onClick={() => navigate(`/course/${courseParam}/video/${videoId}`)}
+              className={`font-bold text-sm sm:text-base leading-snug line-clamp-2 cursor-pointer hover:text-[#EA580C] transition ${
+                video.completed ? 'line-through text-[#78716C]' : 'text-[#431407]'
+              }`}
+            >
+              {video.title}
+            </h3>
+
+            <div className="flex flex-wrap gap-2 items-center text-xs mt-2">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#FFF7ED] text-[#C2410C] border border-[#FED7AA] text-[11px] font-bold">
+                <BookOpen size={11} /> {video.course}
+              </span>
+              {video.tag && (
+                <span className="inline-flex items-center gap-0.5 text-[11px] text-[#78716C]">
+                  <Hash size={10} /> {video.tag}
+                </span>
+              )}
+              {video.duration > 0 && (
+                <span className="flex items-center gap-1 text-[11px] text-[#78716C] ml-auto">
+                  <Clock size={11} /> {formatDuration(video.duration)}
+                </span>
               )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Meta info */}
-      <div className="flex flex-wrap gap-2 items-center text-xs mt-auto pt-2 border-t border-slate-100 dark:border-slate-700/50">
-        <span className="badge bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 shadow-sm border border-orange-200/50 dark:border-orange-800/50 flex items-center gap-1">
-          <BookOpen size={10} /> {video.course}
-        </span>
-        {video.tag && (
-          <span className="badge bg-amber-50 dark:bg-slate-700 text-amber-700 dark:text-slate-300 border border-amber-200/50 dark:border-slate-600 flex items-center gap-1">
-            <Hash size={10} />{video.tag}
-          </span>
-        )}
-        <span className="flex items-center gap-1 text-slate-500 dark:text-slate-400 ml-auto font-medium">
-          <Clock size={13} />
-          {formatDuration(video.duration)}
-        </span>
-      </div>
-
-      {/* Actions */}
-      <div className="flex gap-2 mt-2">
-        <button
-          onClick={() => onDelete && onDelete(videoId)}
-          title="Delete Video"
-          className="flex-shrink-0 w-11 py-2.5 rounded-xl border flex items-center justify-center transition-colors shadow-sm bg-white dark:bg-slate-800 border-red-200 dark:border-red-900/50 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-        >
-          <Trash2 size={18} />
-        </button>
-        <button
-          onClick={() => setShowNotes(!showNotes)}
-          title="Notes"
-          className={`flex-shrink-0 w-11 py-2.5 rounded-xl border flex items-center justify-center transition-colors shadow-sm
-            ${showNotes 
-              ? 'bg-orange-500 text-white border-orange-500 glow-orange' 
-              : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-orange-500 dark:hover:text-orange-400 hover:border-orange-200 dark:hover:border-slate-600'
+      {/* Action Buttons Bar */}
+      <div className="flex items-center justify-between gap-2 pt-3 border-t border-[#FED7AA]/60 mt-1">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleToggle}
+            disabled={isToggling}
+            className={`text-xs px-3 py-1.5 font-bold rounded-xl flex items-center gap-1.5 transition ${
+              video.completed
+                ? 'bg-green-100 text-green-800 border border-green-300 hover:bg-green-200'
+                : 'clay-btn-secondary'
             }`}
-        >
-          <FileText size={18} />
-        </button>
-        <button
-          onClick={handleToggle}
-          disabled={isToggling}
-          className={`flex-1 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-sm
-            ${video.completed
-              ? 'bg-slate-100 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600'
-              : 'btn-primary border border-transparent'
-            } ${isToggling ? 'opacity-60 cursor-not-allowed' : ''}`}
-        >
-          {isToggling ? (
-            <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-          ) : video.completed ? (
-            <><Check size={16} strokeWidth={3} /> Completed</>
-          ) : (
-            <><CheckCircle2 size={16} /> Mark as Done</>
+          >
+            <CheckCircle2 size={14} className={video.completed ? 'text-green-700' : 'text-[#78716C]'} />
+            {video.completed ? 'Completed ✓' : 'Mark Done'}
+          </button>
+
+          <button
+            onClick={() => setShowNotes(!showNotes)}
+            className="clay-btn-subtle text-xs px-2.5 py-1.5 flex items-center gap-1"
+          >
+            <FileText size={13} /> Notes {video.notes ? '•' : ''}
+          </button>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => navigate(`/course/${courseParam}/video/${videoId}`)}
+            className="clay-btn-primary text-xs px-3 py-1.5 flex items-center gap-1"
+          >
+            <Play size={12} fill="currentColor" /> Play
+          </button>
+
+          {onDelete && (
+            <button
+              onClick={() => onDelete(videoId)}
+              className="p-1.5 rounded-lg text-[#78716C] hover:text-red-600 hover:bg-red-50 transition"
+              title="Delete Video"
+            >
+              <Trash2 size={15} />
+            </button>
           )}
-        </button>
+        </div>
       </div>
 
-      {/* Notes text area */}
+      {/* Expandable Notes Drawer */}
       {showNotes && (
-        <div className="mt-2 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700 slide-in">
+        <div className="pt-3 border-t border-[#FED7AA] space-y-2">
           <textarea
+            rows={2}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="Add your study notes here..."
-            className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 dark:text-white min-h-[80px] transition-shadow shadow-inner resize-none"
+            placeholder="Add personal notes for this video..."
+            className="clay-input text-xs"
           />
-          <button
-            onClick={saveNotes}
-            className="mt-2 w-full text-xs font-bold uppercase tracking-wider bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 px-4 py-2 rounded-lg hover:bg-orange-200 dark:hover:bg-orange-900/50 transition-colors border border-orange-200 dark:border-orange-800/50"
-          >
-            Save Notes
-          </button>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setShowNotes(false)}
+              className="clay-btn-subtle text-xs py-1"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={saveNotes}
+              className="clay-btn-secondary text-xs px-3 py-1"
+            >
+              Save Note
+            </button>
+          </div>
         </div>
       )}
     </div>

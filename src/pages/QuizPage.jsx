@@ -86,13 +86,13 @@ export default function QuizPage() {
   const isUrgent = timeLeft !== null && timeLeft < 60;
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 to-slate-900">
+    <div className="min-h-screen flex items-center justify-center bg-slate-950">
       <div className="w-12 h-12 border-4 border-orange-500/30 border-t-orange-500 rounded-full animate-spin" />
     </div>
   );
 
   if (alreadyAttempted && !submitted) return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 to-slate-900 text-white" style={{fontFamily:"'Inter',sans-serif"}}>
+    <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white" style={{fontFamily:"'Inter',sans-serif"}}>
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet" />
       <div className="text-center max-w-sm px-6">
         <div className="w-16 h-16 rounded-full bg-amber-500/20 flex items-center justify-center mx-auto mb-4">
@@ -109,10 +109,10 @@ export default function QuizPage() {
   );
 
   if (submitted && result) return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 to-slate-900 text-white px-4" style={{fontFamily:"'Inter',sans-serif"}}>
+    <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white px-4" style={{fontFamily:"'Inter',sans-serif"}}>
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet" />
       <div className="max-w-sm w-full text-center">
-        <div className="w-24 h-24 rounded-full bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-orange-500/30">
+        <div className="w-24 h-24 rounded-full bg-[#EA580C] flex items-center justify-center mx-auto mb-6 shadow-md">
           <Trophy size={44} />
         </div>
         <h2 className="text-3xl font-black mb-1">Quiz Complete!</h2>
@@ -138,7 +138,7 @@ export default function QuizPage() {
         </div>
 
         <div className="flex flex-col gap-3">
-          <Link to={`/quiz/${id}/results`} className="w-full py-3 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold transition text-sm">
+          <Link to={`/quiz/${id}/results`} className="w-full py-3 rounded-xl bg-[#EA580C] hover:bg-[#C2410C] text-white font-bold transition text-sm">
             View Detailed Results
           </Link>
           <Link to={`/quiz/${id}/leaderboard`} className="w-full py-3 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold transition text-sm flex items-center justify-center gap-2">
@@ -154,7 +154,7 @@ export default function QuizPage() {
   const answered = Object.keys(answers).length;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white px-4 py-8" style={{fontFamily:"'Inter',sans-serif"}}>
+    <div className="min-h-screen bg-slate-950 text-white px-4 py-8" style={{fontFamily:"'Inter',sans-serif"}}>
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet" />
       <div className="max-w-2xl mx-auto">
 
@@ -172,7 +172,7 @@ export default function QuizPage() {
 
         {/* Progress bar */}
         <div className="h-1 bg-white/10 rounded-full mb-6 overflow-hidden">
-          <div className="h-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all duration-300" style={{ width: `${((currentQ + 1) / questions.length) * 100}%` }} />
+          <div className="h-full bg-[#EA580C] transition-all duration-300" style={{ width: `${((currentQ + 1) / questions.length) * 100}%` }} />
         </div>
 
         {/* Question */}
@@ -226,7 +226,7 @@ export default function QuizPage() {
             <button
               onClick={handleSubmit}
               disabled={submitting}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white text-sm font-black transition disabled:opacity-60"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-black transition disabled:opacity-60"
             >
               {submitting ? 'Submitting...' : 'Submit Quiz ✓'}
             </button>

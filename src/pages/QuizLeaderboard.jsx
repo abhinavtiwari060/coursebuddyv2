@@ -31,7 +31,7 @@ export default function QuizLeaderboard() {
   }, [id]);
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 to-slate-900">
+    <div className="min-h-screen flex items-center justify-center bg-slate-950">
       <div className="w-12 h-12 border-4 border-orange-500/30 border-t-orange-500 rounded-full animate-spin" />
     </div>
   );
@@ -39,7 +39,7 @@ export default function QuizLeaderboard() {
   const myEntry = leaderboard.find(e => String(e.userId) === String(user?.id));
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white px-4 py-8" style={{fontFamily:"'Inter',sans-serif"}}>
+    <div className="min-h-screen bg-slate-950 text-white px-4 py-8" style={{fontFamily:"'Inter',sans-serif"}}>
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet" />
       <div className="max-w-2xl mx-auto">
 
@@ -49,7 +49,7 @@ export default function QuizLeaderboard() {
 
         {/* Header */}
         <div className="text-center mb-10">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center mx-auto mb-4 shadow-2xl shadow-orange-500/30">
+          <div className="w-16 h-16 rounded-2xl bg-[#EA580C] flex items-center justify-center mx-auto mb-4 shadow-md">
             <Trophy size={32} />
           </div>
           <h1 className="text-3xl font-black">{quiz?.title || 'Quiz'}</h1>
@@ -64,13 +64,13 @@ export default function QuizLeaderboard() {
               const heights = ['h-24', 'h-32', 'h-20'];
               return (
                 <div key={entry.userId} className="flex flex-col items-center gap-2">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500/30 to-amber-400/20 border-2 border-white/20 flex items-center justify-center overflow-hidden">
+                  <div className="w-12 h-12 rounded-full bg-[#EA580C] border-2 border-white/20 flex items-center justify-center overflow-hidden">
                     {entry.avatar ? <img src={entry.avatar} className="w-full h-full object-cover" alt="" /> : (
                       <span className="text-lg font-black">{entry.name?.[0]}</span>
                     )}
                   </div>
                   <span className="text-xs font-bold text-center max-w-20 truncate">{entry.name}</span>
-                  <div className={`${heights[i]} w-20 bg-gradient-to-t ${rankColors[podiumIdx]} rounded-t-xl flex flex-col items-center justify-center gap-1`}>
+                  <div className={`${heights[i]} w-20 bg-[#EA580C] rounded-t-xl flex flex-col items-center justify-center gap-1`}>
                     <span className="text-2xl">{rankIcons[podiumIdx]}</span>
                     <span className="text-xs font-bold">{entry.score}/{entry.totalQuestions}</span>
                   </div>
@@ -117,7 +117,7 @@ export default function QuizLeaderboard() {
                   )}
                 </div>
                 <div className="col-span-5 flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-500/20 to-amber-400/10 flex items-center justify-center overflow-hidden flex-shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-[#EA580C] flex items-center justify-center overflow-hidden flex-shrink-0">
                     {entry.avatar ? <img src={entry.avatar} className="w-full h-full object-cover" alt="" /> : (
                       <span className="text-xs font-black">{entry.name?.[0]}</span>
                     )}
@@ -145,7 +145,7 @@ export default function QuizLeaderboard() {
           <Link to={`/quiz/${id}/results`} className="flex-1 py-3 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-sm text-center transition">
             My Results
           </Link>
-          <Link to="/dashboard" className="flex-1 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm text-center transition">
+          <Link to="/dashboard" className="flex-1 py-3 rounded-xl bg-[#EA580C] hover:bg-[#C2410C] text-white font-bold text-sm text-center transition">
             Dashboard
           </Link>
         </div>

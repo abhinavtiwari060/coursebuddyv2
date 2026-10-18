@@ -1,7 +1,7 @@
 export default function Logo({ size = 44, className = "" }) {
   return (
     <div
-      className={`relative flex items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 shadow-lg shadow-orange-500/20 overflow-hidden ${className}`}
+      className={`relative flex items-center justify-center rounded-2xl bg-[#EA580C] shadow-md border border-[#C2410C] overflow-hidden ${className}`}
       style={{ width: size, height: size }}
     >
       <svg viewBox="0 0 100 100" className="w-4/5 h-4/5 fill-white">

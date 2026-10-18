@@ -57,7 +57,7 @@ export default function BugReport({ onClose }) {
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
       <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-lg my-4">
         {/* Header */}
-        <div className="bg-gradient-to-r from-red-500 to-orange-500 p-6 rounded-t-3xl flex items-center justify-between">
+        <div className="bg-[#9A3412] p-6 rounded-t-3xl flex items-center justify-between border-b border-[#7C2D12]">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
               <Bug size={22} className="text-white" />

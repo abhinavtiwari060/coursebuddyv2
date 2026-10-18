@@ -4,8 +4,8 @@ import { Link } from 'react-router-dom';
 export default function Footer() {
   return (
     <footer className="mt-16 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden relative">
-      {/* Decorative gradient */}
-      <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-orange-500 via-amber-400 to-indigo-500" />
+      {/* Decorative accent */}
+      <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#EA580C]" />
       
       <div className="max-w-7xl mx-auto px-6 py-12">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-10 items-center justify-center">

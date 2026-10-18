@@ -5,39 +5,30 @@ import { adminService } from '../api/api';
 import { formatDuration } from '../utils/helpers';
 import {
   Users, Trash2, Clock, PlayCircle, LogOut, ShieldAlert, X, BookOpen,
-  CheckCircle2, Trophy, Medal, Crown, BarChart2, Activity, Eye,
-  Search, Filter, ChevronDown, TrendingUp, Flame, AlertTriangle, Send, Palette,
-  Bug, ToggleLeft, ToggleRight, Circle, Settings as SettingsIcon, Sparkles
+  CheckCircle2, Trophy, Activity, Eye, Search, Flame, AlertTriangle, Send,
+  Palette, Bug, ToggleLeft, ToggleRight, Settings as SettingsIcon, ShieldCheck
 } from 'lucide-react';
 import AdminUserLimit from '../components/AdminUserLimit';
 import SuggestedPlaylistsAdmin from '../components/SuggestedPlaylistsAdmin';
 import AdminCourseCreator from '../components/AdminCourseCreator';
 import AdminPlaylistManager from '../components/AdminPlaylistManager';
-import AdminQuizManager from '../components/AdminQuizManager';
-import AdminAIQuiz from '../components/AdminAIQuiz';
 import AdminDeleteRequests from '../components/AdminDeleteRequests';
-import { quizService } from '../api/api';
-
 
 function getInitials(name = '') {
   return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
 }
 
 const TABS = [
-  { id: 'users',         label: 'Users',          icon: <Users size={16} />,       color: 'slate'  },
-  { id: 'leaderboard',   label: 'Leaderboard',    icon: <Trophy size={16} />,      color: 'amber'  },
-  { id: 'courses',       label: 'Course Creator', icon: <BookOpen size={16} />,    color: 'orange' },
-  { id: 'playlists',     label: 'Playlist Mgr',   icon: <PlayCircle size={16} />, color: 'emerald' },
-  { id: 'quiz',          label: 'Quiz Manager',   icon: <BarChart2 size={16} />,   color: 'purple' },
-  { id: 'ai_quiz',       label: 'AI Quizer',      icon: <Sparkles size={16} />,    color: 'violet' },
-  { id: 'permissions',   label: 'Permissions',    icon: <ShieldAlert size={16} />, color: 'indigo' },
-  { id: 'delete_requests', label: 'Delete Requests', icon: <Trash2 size={16} />, color: 'red' },
-  { id: 'bugs',          label: 'Bug Reports',    icon: <Bug size={16} />,         color: 'red'    },
-  { id: 'notifications', label: 'Settings',       icon: <SettingsIcon size={16} />,color: 'slate'  },
+  { id: 'users',           label: 'Users',           icon: <Users size={16} /> },
+  { id: 'leaderboard',     label: 'Leaderboard',     icon: <Trophy size={16} /> },
+  { id: 'courses',         label: 'Course Creator',  icon: <BookOpen size={16} /> },
+  { id: 'playlists',       label: 'Playlist Manager',icon: <PlayCircle size={16} /> },
+  { id: 'delete_requests', label: 'Delete Requests', icon: <Trash2 size={16} /> },
+  { id: 'bugs',            label: 'Bug Reports',     icon: <Bug size={16} /> },
+  { id: 'notifications',   label: 'Settings & Push', icon: <SettingsIcon size={16} /> },
 ];
 
 const FEATURE_LABELS = {
-
   canAccessCourses: 'YouTube Courses',
   canAddCourse: 'Add Course',
   canDeleteCourse: 'Delete Course',
@@ -46,8 +37,6 @@ const FEATURE_LABELS = {
   canUseLeaderboard: 'Leaderboard',
   canReportBug: 'Bug Report',
 };
-
-
 
 export default function AdminDashboard() {
   const { user, logout } = useAuth();
@@ -69,52 +58,6 @@ export default function AdminDashboard() {
 
   // Bug reports state
   const [bugReports, setBugReports] = useState([]);
-  const [bugLoading, setBugLoading] = useState(false);
-
-  // Quiz permission state
-  const [quizRoleUpdating, setQuizRoleUpdating] = useState({});
-
-  // Theme state
-  const [isLavender, setIsLavender] = useState(false);
-
-  useEffect(() => {
-    // Check if lavender theme is active
-    setIsLavender(document.documentElement.classList.contains('theme-lavender'));
-  }, []);
-
-  const toggleLavenderTheme = async () => {
-    const newTheme = isLavender ? 'default' : 'theme-lavender';
-    setIsLavender(!isLavender);
-    
-    // Optimistic UI update
-    document.documentElement.classList.remove('theme-lavender');
-    if (newTheme === 'theme-lavender') document.documentElement.classList.add('theme-lavender');
-
-    try {
-      await adminService.updateSettings({ theme: newTheme });
-      alert("Success! Global theme changed for all users.");
-    } catch (err) {
-      console.error(err);
-      alert("Failed to update global theme");
-    }
-  };
-
-  const handleSendPush = async () => {
-    if (!pushTitle || !pushBody) return alert("Title and Body required.");
-    const recipientIds = selectedUser ? [selectedUser._id] : [];
-    
-    setPushSending(true);
-    try {
-      const res = await adminService.sendPush({ title: pushTitle, body: pushBody, userIds: recipientIds });
-      alert(res.message);
-      setPushTitle('');
-      setPushBody('');
-    } catch (err) {
-      alert(err.response?.data?.error || "Push failed");
-    } finally {
-      setPushSending(false);
-    }
-  };
 
   useEffect(() => {
     if (!user || user.role !== 'admin') {
@@ -131,13 +74,30 @@ export default function AdminDashboard() {
         adminService.getLeaderboard(),
         adminService.getBugReports().catch(() => []),
       ]);
-      setUsers(usersData);
-      setLeaderboard(lbData);
-      setBugReports(bugsData);
+      setUsers(usersData || []);
+      setLeaderboard(lbData || []);
+      setBugReports(bugsData || []);
     } catch (err) {
       console.error('Failed to fetch admin data', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSendPush = async () => {
+    if (!pushTitle || !pushBody) return alert('Title and Body required.');
+    const recipientIds = selectedUser ? [selectedUser._id] : [];
+    
+    setPushSending(true);
+    try {
+      const res = await adminService.sendPush({ title: pushTitle, body: pushBody, userIds: recipientIds });
+      alert(res.message || 'Notification broadcast sent successfully!');
+      setPushTitle('');
+      setPushBody('');
+    } catch (err) {
+      alert(err.response?.data?.error || 'Push failed');
+    } finally {
+      setPushSending(false);
     }
   };
 
@@ -162,7 +122,7 @@ export default function AdminDashboard() {
 
   const handleToggleFeature = async (userId, featureKey, currentValue) => {
     const u = users.find(x => x._id === userId);
-    const newFeatures = { ...u.features, [featureKey]: !currentValue };
+    const newFeatures = { ...u?.features, [featureKey]: !currentValue };
     try {
       await adminService.updateFeatures(userId, newFeatures);
       setUsers(prev => prev.map(x => x._id === userId ? { ...x, features: newFeatures } : x));
@@ -199,12 +159,14 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteUser = async (id) => {
-
     if (!window.confirm('Delete this user and ALL their data permanently?')) return;
     try {
       await adminService.deleteUser(id);
       setUsers(users.filter(u => u._id !== id));
-      if (selectedUser?._id === id) setSelectedUser(null);
+      if (selectedUser?._id === id) {
+        setSelectedUser(null);
+        setUserDetails(null);
+      }
     } catch (err) {
       alert('Failed to delete user');
     }
@@ -240,18 +202,9 @@ export default function AdminDashboard() {
     navigate('/login');
   };
 
-  const handleSetQuizRole = async (userId, quizRole) => {
-    setQuizRoleUpdating(s => ({ ...s, [userId]: true }));
-    try {
-      const updated = await quizService.adminSetUserRole(userId, quizRole);
-      setUsers(prev => prev.map(u => u._id === userId ? { ...u, quizRole: updated.quizRole } : u));
-    } catch { alert('Failed to update quiz role'); }
-    finally { setQuizRoleUpdating(s => ({ ...s, [userId]: false })); }
-  };
-
   const filteredUsers = users.filter(u => {
-    const matchSearch = u.name.toLowerCase().includes(search.toLowerCase()) ||
-                        u.email.toLowerCase().includes(search.toLowerCase());
+    const matchSearch = (u.name || '').toLowerCase().includes(search.toLowerCase()) ||
+                        (u.email || '').toLowerCase().includes(search.toLowerCase());
     const matchStatus = filterStatus === 'all' || u.status === filterStatus;
     return matchSearch && matchStatus;
   });
@@ -261,74 +214,83 @@ export default function AdminDashboard() {
   const blockedUsers = users.filter(u => u.status === 'blocked').length;
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+    <div className="min-h-screen flex items-center justify-center bg-[#FFF7ED]">
       <div className="flex flex-col items-center gap-3">
-        <div className="w-12 h-12 border-4 border-orange-400 border-t-transparent rounded-full animate-spin" />
-        <p className="text-slate-500 font-medium">Loading admin panel...</p>
+        <div className="w-12 h-12 border-4 border-[#EA580C] border-t-transparent rounded-full animate-spin" />
+        <p className="text-[#78716C] font-semibold text-sm">Loading StudyMate Admin Panel...</p>
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white px-6 py-5 flex items-center justify-between shadow-xl">
+    <div className="min-h-screen bg-[#FFF7ED] text-[#431407] font-sans pb-16">
+      {/* Admin Top Header - Solid Deep Orange, Zero Gradients */}
+      <header className="bg-[#9A3412] text-white px-6 py-5 flex items-center justify-between border-b border-[#7C2D12] shadow-sm">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-red-500/20 border border-red-500/40 rounded-2xl flex items-center justify-center">
-            <ShieldAlert size={24} className="text-red-400" />
+          <div className="w-12 h-12 bg-[#EA580C] border border-[#FED7AA] rounded-2xl flex items-center justify-center shadow-inner">
+            <ShieldAlert size={24} className="text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-black">Admin Control Panel</h1>
-            <p className="text-slate-400 text-sm">StudyMate · Total {users.length} users managed</p>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-black tracking-tight">Admin Control Panel</h1>
+              <span className="text-[10px] font-black uppercase tracking-wider bg-[#FED7AA] text-[#9A3412] px-2 py-0.5 rounded-full">
+                StudyMate Core
+              </span>
+            </div>
+            <p className="text-[#FED7AA] text-xs font-medium">Total {users.length} enrolled students managed</p>
           </div>
         </div>
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-sm font-bold transition"
-        >
-          <LogOut size={15} /> Logout
-        </button>
-      </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="px-4 py-2 bg-[#C2410C] hover:bg-[#EA580C] text-white rounded-xl text-xs font-bold transition border border-[#9A3412]"
+          >
+            ← View Student Platform
+          </button>
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition text-white border border-white/20"
+          >
+            <LogOut size={14} /> Logout
+          </button>
+        </div>
+      </header>
 
-      <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
-        {/* Stats Row */}
+      <main className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+        {/* Metric Cards Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { icon: <Users size={20} className="text-blue-500" />, label: 'Total Users', value: users.length, bg: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' },
-            { icon: <CheckCircle2 size={20} className="text-green-500" />, label: 'Videos Done', value: totalCompletedVideos, bg: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' },
-            { icon: <Clock size={20} className="text-indigo-500" />, label: 'Total Watch Time', value: formatDuration(totalWatchTime), bg: 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800' },
-            { icon: <AlertTriangle size={20} className="text-red-500" />, label: 'Blocked Users', value: blockedUsers, bg: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' },
+            { icon: <Users size={20} className="text-[#EA580C]" />, label: 'Total Users', value: users.length },
+            { icon: <CheckCircle2 size={20} className="text-[#15803D]" />, label: 'Videos Done', value: totalCompletedVideos },
+            { icon: <Clock size={20} className="text-[#C2410C]" />, label: 'Total Watch Time', value: formatDuration(totalWatchTime) },
+            { icon: <AlertTriangle size={20} className="text-[#DC2626]" />, label: 'Blocked Accounts', value: blockedUsers },
           ].map((s, i) => (
-            <div key={i} className={`p-5 rounded-2xl border glass-card ${s.bg} flex flex-col gap-2`}>
-              <div className="p-2 bg-white/60 dark:bg-slate-800/60 rounded-xl w-fit">{s.icon}</div>
-              <span className="text-2xl font-black dark:text-white">{s.value}</span>
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">{s.label}</span>
+            <div key={i} className="clay-card p-5 bg-white border border-[#FED7AA] rounded-2xl flex flex-col gap-2">
+              <div className="p-2.5 bg-[#FFF7ED] rounded-xl w-fit border border-[#FED7AA]">{s.icon}</div>
+              <span className="text-2xl font-black text-[#431407]">{s.value}</span>
+              <span className="text-xs font-bold text-[#78716C] uppercase tracking-wider">{s.label}</span>
             </div>
           ))}
         </div>
 
-        <div className="flex flex-wrap gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-1 w-full md:w-fit">
+        {/* Tab Navigation */}
+        <div className="clay-card p-2 bg-white border border-[#FED7AA] rounded-2xl flex flex-wrap gap-1.5 w-full">
           {TABS.map(t => {
             const isActive = activeTab === t.id;
-            const colorClasses = {
-              slate:  'bg-slate-900 dark:bg-white text-white dark:text-slate-900',
-              amber:  'bg-amber-500  text-white shadow-amber-500/20',
-              orange: 'bg-orange-500 text-white shadow-orange-500/20',
-              blue:   'bg-blue-500   text-white shadow-blue-500/20',
-              purple: 'bg-purple-500 text-white shadow-purple-500/20',
-              violet: 'bg-violet-600 text-white shadow-violet-500/20',
-              indigo: 'bg-indigo-500 text-white shadow-indigo-500/20',
-              red:    'bg-red-500    text-white shadow-red-500/20',
-            };
-
             return (
               <button
                 key={t.id}
-                onClick={() => setActiveTab(t.id)}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition whitespace-nowrap ${
+                onClick={() => {
+                  setActiveTab(t.id);
+                  if (t.id !== 'users') {
+                    setSelectedUser(null);
+                    setUserDetails(null);
+                  }
+                }}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition whitespace-nowrap ${
                   isActive
-                    ? `${colorClasses[t.color] || colorClasses.slate} shadow-lg`
-                    : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    ? 'bg-[#EA580C] text-white shadow-sm'
+                    : 'text-[#78716C] hover:text-[#431407] hover:bg-[#FFF7ED]'
                 }`}
               >
                 {t.icon} {t.label}
@@ -337,103 +299,113 @@ export default function AdminDashboard() {
           })}
         </div>
 
-
-        {/* Users Tab */}
+        {/* ── Users Tab ── */}
         {activeTab === 'users' && (
           <div className={`grid gap-6 ${selectedUser ? 'grid-cols-1 xl:grid-cols-5' : 'grid-cols-1'}`}>
             {/* User Table */}
-            <div className={`glass-card rounded-2xl overflow-hidden ${selectedUser ? 'xl:col-span-3' : ''}`}>
-              {/* Table search/filter bar */}
-              <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex gap-3 flex-wrap">
-                <div className="flex-1 relative min-w-[200px]">
-                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <div className={`clay-card bg-white border border-[#FED7AA] rounded-2xl overflow-hidden ${selectedUser ? 'xl:col-span-3' : ''}`}>
+              <div className="p-4 border-b border-[#FED7AA] flex gap-3 flex-wrap items-center justify-between">
+                <div className="flex-1 relative min-w-[220px]">
+                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#78716C]" />
                   <input
                     value={search}
                     onChange={e => setSearch(e.target.value)}
-                    placeholder="Search users..."
-                    className="w-full pl-9 pr-4 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-400 dark:text-white"
+                    placeholder="Search students by name or email..."
+                    className="w-full pl-9 pr-4 py-2 text-sm bg-[#FFF7ED] border border-[#FED7AA] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#EA580C] text-[#431407]"
                   />
                 </div>
                 <select
                   value={filterStatus}
                   onChange={e => setFilterStatus(e.target.value)}
-                  className="px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none dark:text-white"
+                  className="px-3 py-2 text-xs font-bold bg-[#FFF7ED] border border-[#FED7AA] rounded-xl focus:outline-none text-[#431407]"
                 >
                   <option value="all">All Status</option>
-                  <option value="active">Active</option>
-                  <option value="blocked">Blocked</option>
+                  <option value="active">Active Only</option>
+                  <option value="blocked">Blocked Only</option>
                 </select>
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
+                <table className="w-full text-left border-collapse text-sm">
                   <thead>
-                    <tr className="bg-slate-100/50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
-                      <th className="p-4 font-bold text-slate-600 dark:text-slate-300 text-sm">User</th>
+                    <tr className="bg-[#FFF7ED] border-b border-[#FED7AA] text-xs font-black text-[#78716C] uppercase">
+                      <th className="p-4">Student</th>
                       {!selectedUser && <>
-                        <th className="p-4 font-bold text-slate-600 dark:text-slate-300 text-sm">Status</th>
-                        <th className="p-4 font-bold text-slate-600 dark:text-slate-300 text-sm text-center">Watch Time</th>
-                        <th className="p-4 font-bold text-slate-600 dark:text-slate-300 text-sm text-center">Videos</th>
-                        <th className="p-4 font-bold text-slate-600 dark:text-slate-300 text-sm text-center">Streak</th>
+                        <th className="p-4">Category</th>
+                        <th className="p-4">Status</th>
+                        <th className="p-4 text-center">Watch Time</th>
+                        <th className="p-4 text-center">Videos</th>
+                        <th className="p-4 text-center">Streak</th>
                       </>}
-                      <th className="p-4 font-bold text-slate-600 dark:text-slate-300 text-sm text-center">Actions</th>
+                      <th className="p-4 text-center">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  <tbody className="divide-y divide-[#FED7AA]/50">
                     {filteredUsers.map(u => (
                       <tr
                         key={u._id}
                         onClick={() => handleViewUser(u)}
-                        className={`hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition cursor-pointer ${selectedUser?._id === u._id ? 'bg-orange-50/50 dark:bg-orange-900/10' : ''}`}
+                        className={`hover:bg-[#FFF7ED]/70 transition cursor-pointer ${selectedUser?._id === u._id ? 'bg-[#FFF7ED]' : ''}`}
                       >
                         <td className="p-4">
                           <div className="flex items-center gap-3">
-                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0 ${u.status === 'blocked' ? 'bg-red-100 text-red-500 dark:bg-red-900/30' : 'bg-gradient-to-br from-orange-400 to-amber-500 text-white'}`}>
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs flex-shrink-0 ${
+                              u.status === 'blocked' ? 'bg-red-100 text-red-600' : 'bg-[#EA580C] text-white'
+                            }`}>
                               {getInitials(u.name)}
                             </div>
-                            <div>
-                              <p className="font-bold text-sm dark:text-white">{u.name}</p>
-                              <p className="text-xs text-slate-400">{u.email}</p>
+                            <div className="min-w-0">
+                              <p className="font-bold text-[#431407] truncate">{u.name}</p>
+                              <p className="text-xs text-[#78716C] truncate">{u.email}</p>
                             </div>
                           </div>
                         </td>
                         {!selectedUser && <>
                           <td className="p-4">
-                            <span className={`badge text-xs ${u.status === 'blocked' ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'}`}>
+                            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-[#FFF7ED] text-[#EA580C] border border-[#FED7AA]">
+                              {u.category || 'other'}
+                            </span>
+                          </td>
+                          <td className="p-4">
+                            <span className={`text-[11px] font-black uppercase px-2 py-0.5 rounded-full ${
+                              u.status === 'blocked' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                            }`}>
                               {u.status || 'active'}
                             </span>
                           </td>
-                          <td className="p-4 text-center">
-                            <span className="text-sm font-bold dark:text-slate-300">{formatDuration(u.totalWatchTime || 0)}</span>
+                          <td className="p-4 text-center font-bold text-[#431407]">
+                            {formatDuration(u.totalWatchTime || 0)}
                           </td>
-                          <td className="p-4 text-center">
-                            <span className="badge bg-amber-100 text-amber-700 dark:bg-slate-800 dark:text-amber-400 text-xs">
-                              <PlayCircle size={11} className="mr-1"/> {u.completedVideos}/{u.totalVideos}
-                            </span>
+                          <td className="p-4 text-center font-bold text-[#78716C]">
+                            {u.completedVideos || 0}
                           </td>
-                          <td className="p-4 text-center">
-                            <span className="text-sm font-bold text-orange-500">{u.currentStreak || 0}🔥</span>
+                          <td className="p-4 text-center font-black text-[#EA580C]">
+                            {u.currentStreak || 0}🔥
                           </td>
                         </>}
                         <td className="p-4 text-center" onClick={e => e.stopPropagation()}>
-                          <div className="flex items-center justify-center gap-1">
+                          <div className="flex items-center justify-center gap-1.5">
                             <button
                               onClick={() => handleViewUser(u)}
-                              className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-orange-100 hover:text-orange-600 dark:hover:bg-orange-900/30 dark:hover:text-orange-400 transition"
+                              className="p-1.5 rounded-lg bg-[#FFF7ED] text-[#78716C] hover:bg-[#FED7AA] hover:text-[#431407] transition"
                               title="View details"
                             >
                               <Eye size={15} />
                             </button>
                             <button
                               onClick={() => handleBlockUser(u._id)}
-                              className={`p-2 rounded-lg transition ${u.status === 'blocked' ? 'bg-orange-100 text-orange-600 hover:bg-orange-500 hover:text-white dark:bg-orange-900/30 dark:text-orange-400' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'}`}
-                              title={u.status === 'blocked' ? 'Unblock' : 'Block'}
+                              className={`p-1.5 rounded-lg transition ${
+                                u.status === 'blocked'
+                                  ? 'bg-[#EA580C] text-white hover:bg-[#C2410C]'
+                                  : 'bg-[#FFF7ED] text-[#78716C] hover:bg-orange-100 hover:text-[#EA580C]'
+                              }`}
+                              title={u.status === 'blocked' ? 'Unblock user' : 'Block user'}
                             >
                               <ShieldAlert size={15} />
                             </button>
                             <button
                               onClick={() => handleDeleteUser(u._id)}
-                              className="p-2 bg-red-50 text-red-500 hover:bg-red-500 hover:text-white dark:bg-red-900/20 dark:hover:bg-red-600 rounded-lg transition"
+                              className="p-1.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-lg transition"
                               title="Delete user"
                             >
                               <Trash2 size={15} />
@@ -444,7 +416,7 @@ export default function AdminDashboard() {
                     ))}
                     {filteredUsers.length === 0 && (
                       <tr>
-                        <td colSpan="7" className="p-12 text-center text-slate-400 italic">No users found.</td>
+                        <td colSpan="7" className="p-12 text-center text-[#78716C] italic">No users found.</td>
                       </tr>
                     )}
                   </tbody>
@@ -454,44 +426,48 @@ export default function AdminDashboard() {
 
             {/* User Detail Sidebar */}
             {selectedUser && (
-              <div className="xl:col-span-2 glass-card rounded-2xl overflow-hidden h-fit">
-                <div className="bg-gradient-to-r from-slate-800 to-slate-700 p-5 flex items-start justify-between">
+              <div className="xl:col-span-2 clay-card bg-white border border-[#FED7AA] rounded-2xl overflow-hidden h-fit">
+                <div className="bg-[#9A3412] p-5 flex items-start justify-between text-white border-b border-[#7C2D12]">
                   <div className="flex items-center gap-3">
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg ${userDetails?.user?.status === 'blocked' ? 'bg-red-500/20 text-red-400' : 'bg-orange-500/20 text-orange-400'}`}>
+                    <div className="w-12 h-12 rounded-2xl bg-[#EA580C] text-white flex items-center justify-center font-black text-lg border border-[#FED7AA]">
                       {getInitials(selectedUser.name)}
                     </div>
                     <div>
-                      <h2 className="text-xl font-black text-white">{selectedUser.name}</h2>
-                      <p className="text-slate-400 text-xs">{selectedUser.email}</p>
+                      <h2 className="text-lg font-black">{selectedUser.name}</h2>
+                      <p className="text-[#FED7AA] text-xs">{selectedUser.email}</p>
                     </div>
                   </div>
-                  <button onClick={() => { setSelectedUser(null); setUserDetails(null); }} className="p-2 bg-white/10 hover:bg-white/20 rounded-xl text-white transition">
+                  <button onClick={() => { setSelectedUser(null); setUserDetails(null); }} className="p-1.5 bg-white/10 hover:bg-white/20 rounded-xl text-white transition">
                     <X size={16}/>
                   </button>
                 </div>
 
                 {loadingDetails ? (
                   <div className="p-12 flex items-center justify-center">
-                    <div className="w-8 h-8 border-3 border-orange-400 border-t-transparent rounded-full animate-spin" />
+                    <div className="w-8 h-8 border-3 border-[#EA580C] border-t-transparent rounded-full animate-spin" />
                   </div>
                 ) : userDetails ? (
                   <div className="p-5 space-y-5">
-                    {/* Status + Actions */}
+                    {/* Status & Actions */}
                     <div className="flex items-center justify-between">
-                      <span className={`badge ${userDetails.user.status === 'blocked' ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'}`}>
+                      <span className={`text-xs font-black uppercase px-2.5 py-1 rounded-full ${
+                        userDetails.user.status === 'blocked' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                      }`}>
                         {userDetails.user.status || 'active'}
                       </span>
                       <div className="flex gap-2">
                         <button
                           onClick={() => handleBlockUser(selectedUser._id)}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl transition ${userDetails.user.status === 'blocked' ? 'bg-orange-100 text-orange-700 hover:bg-orange-500 hover:text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-red-100 hover:text-red-600'}`}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl transition ${
+                            userDetails.user.status === 'blocked' ? 'bg-[#EA580C] text-white hover:bg-[#C2410C]' : 'bg-[#FFF7ED] text-[#78716C] hover:bg-red-50 hover:text-red-600'
+                          }`}
                         >
                           <ShieldAlert size={13} />
                           {userDetails.user.status === 'blocked' ? 'Unblock' : 'Block'}
                         </button>
                         <button
                           onClick={() => handleDeleteUser(selectedUser._id)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl bg-red-50 text-red-600 hover:bg-red-500 hover:text-white transition"
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition"
                         >
                           <Trash2 size={13} /> Delete
                         </button>
@@ -501,109 +477,56 @@ export default function AdminDashboard() {
                     {/* Stats Grid */}
                     <div className="grid grid-cols-2 gap-3">
                       {[
-                        { label: 'Courses', value: userDetails.stats.totalCourses, icon: <BookOpen size={14} />, color: 'text-blue-500' },
-                        { label: 'Streak', value: `${userDetails.stats.currentStreak}🔥`, icon: <Flame size={14} />, color: 'text-orange-500' },
-                        { label: 'Videos Done', value: `${userDetails.stats.completedVideos}/${userDetails.stats.totalVideos}`, icon: <CheckCircle2 size={14} />, color: 'text-green-500' },
-                        { label: 'Watch Time', value: formatDuration(userDetails.stats.totalWatchTime), icon: <Clock size={14} />, color: 'text-indigo-500' },
+                        { label: 'Category', value: userDetails.user.category || 'skills', icon: <BookOpen size={14} /> },
+                        { label: 'Study Streak', value: `${userDetails.stats.currentStreak}🔥`, icon: <Flame size={14} /> },
+                        { label: 'Videos Done', value: `${userDetails.stats.completedVideos}/${userDetails.stats.totalVideos}`, icon: <CheckCircle2 size={14} /> },
+                        { label: 'Watch Time', value: formatDuration(userDetails.stats.totalWatchTime), icon: <Clock size={14} /> },
                       ].map((s, i) => (
-                        <div key={i} className="p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl text-center">
-                          <div className={`flex items-center justify-center gap-1 ${s.color} mb-1`}>{s.icon}</div>
-                          <p className="font-black text-lg dark:text-white">{s.value}</p>
-                          <p className="text-xs text-slate-400 uppercase font-bold tracking-wide">{s.label}</p>
+                        <div key={i} className="p-3 bg-[#FFF7ED] border border-[#FED7AA] rounded-xl text-center">
+                          <div className="flex items-center justify-center gap-1 text-[#EA580C] mb-1">{s.icon}</div>
+                          <p className="font-black text-sm text-[#431407] truncate">{s.value}</p>
+                          <p className="text-[10px] text-[#78716C] uppercase font-bold tracking-wider">{s.label}</p>
                         </div>
                       ))}
                     </div>
 
-                    {/* Joined date */}
-                    <div className="text-xs text-slate-400 text-center">
-                      Joined {new Date(userDetails.user.createdAt).toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' })}
-                    </div>
-
-                    {/* All Videos */}
-                    <div>
-                      <h3 className="font-bold text-sm dark:text-slate-200 mb-3 flex items-center gap-2">
-                        <Activity size={15} className="text-orange-500" /> All Videos ({userDetails.videos.length})
-                      </h3>
-                      <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-                        {userDetails.videos.length === 0 ? (
-                          <p className="text-xs text-slate-400 italic text-center py-4">No videos added yet.</p>
-                        ) : userDetails.videos.map(v => (
-                          <div key={v._id} className="p-3 bg-white/50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700 text-xs">
-                            <div className="flex items-center gap-2">
-                              <span className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${v.completed ? 'bg-green-100 dark:bg-green-900/30' : 'bg-slate-100 dark:bg-slate-700'}`}>
-                                {v.completed ? <CheckCircle2 size={12} className="text-green-500" /> : <PlayCircle size={12} className="text-slate-400" />}
-                              </span>
-                              <span className="font-semibold dark:text-slate-200 truncate flex-1">{v.title}</span>
-                              <span className="text-slate-400 whitespace-nowrap">{formatDuration(v.duration)}</span>
-                            </div>
-                            <div className="flex justify-between mt-1 pl-7 text-slate-400">
-                              <span>{v.course}</span>
-                              {v.completed && v.completedAt && (
-                                <span>✓ {new Date(v.completedAt).toLocaleDateString('en-IN')}</span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Courses List */}
-                    {userDetails.courses.length > 0 && (
-                      <div>
-                        <h3 className="font-bold text-sm dark:text-slate-200 mb-3 flex items-center gap-2">
-                          <BookOpen size={15} className="text-blue-500" /> Courses ({userDetails.courses.length})
-                        </h3>
-                        <div className="flex flex-wrap gap-2">
-                          {userDetails.courses.map(c => (
-                            <span key={c._id} className="badge bg-blue-100 text-blue-700 dark:bg-slate-800 dark:text-blue-300 text-xs">{c.name}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                     {/* Approval Management */}
-                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700">
-                      <h3 className="font-bold text-sm dark:text-slate-200 mb-4 flex items-center gap-2">
-                        <ShieldAlert size={15} className="text-indigo-500" /> Account Approval
+                    <div className="p-4 bg-[#FFF7ED] rounded-xl border border-[#FED7AA]">
+                      <h3 className="font-bold text-xs uppercase tracking-wider text-[#78716C] mb-3 flex items-center gap-2">
+                        <ShieldCheck size={14} className="text-[#EA580C]" /> Account Verification
                       </h3>
-                      <div className="flex flex-wrap gap-3 mb-4">
+                      <div className="flex flex-wrap gap-2 mb-3">
                         {['pending', 'approved', 'rejected'].map(status => (
                           <button
                             key={status}
                             onClick={() => handleUpdateApproval(userDetails.user._id, status)}
-                            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition ${
+                            className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition ${
                               userDetails.user.approvalStatus === status
-                                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
-                                : 'bg-white dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700'
+                                ? 'bg-[#EA580C] text-white shadow-sm'
+                                : 'bg-white text-[#78716C] border border-[#FED7AA]'
                             }`}
                           >
                             {status}
                           </button>
                         ))}
                       </div>
-                      
-                      <div className="flex items-center gap-3">
-                         <label className="text-xs font-bold text-slate-500 uppercase">Access Level:</label>
-                         <select 
-                           value={userDetails.user.accessLevel || 1}
-                           onChange={(e) => handleUpdateAccessLevel(userDetails.user._id, parseInt(e.target.value))}
-                           className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-bold dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
-                         >
-                            {[1, 2, 3, 4, 5].map(v => <option key={v} value={v}>Level {v}</option>)}
-                         </select>
-                      </div>
 
-                      {userDetails.user.approvalTimestamp && (
-                        <p className="mt-3 text-[10px] text-slate-400 font-medium italic">
-                          Last action at: {new Date(userDetails.user.approvalTimestamp).toLocaleString()}
-                        </p>
-                      )}
+                      <div className="flex items-center gap-3">
+                        <label className="text-xs font-bold text-[#78716C] uppercase">Access Level:</label>
+                        <select
+                          value={userDetails.user.accessLevel || 1}
+                          onChange={(e) => handleUpdateAccessLevel(userDetails.user._id, parseInt(e.target.value))}
+                          className="bg-white border border-[#FED7AA] rounded-lg px-2 py-1 text-xs font-bold text-[#431407] outline-none"
+                        >
+                          {[1, 2, 3, 4, 5].map(v => <option key={v} value={v}>Level {v}</option>)}
+                        </select>
+                      </div>
                     </div>
 
-                    {/* Features List */}
-
+                    {/* Feature Access */}
                     <div>
-                      <h3 className="font-bold text-sm dark:text-slate-200 mb-3 flex items-center gap-2">
-                        <ToggleLeft size={15} className="text-purple-500" /> Feature Access
+                      <h3 className="font-bold text-xs uppercase tracking-wider text-[#78716C] mb-3 flex items-center gap-2">
+                        <ToggleLeft size={14} className="text-[#EA580C]" /> Feature Permissions
                       </h3>
                       <div className="grid grid-cols-2 gap-2">
                         {Object.entries(FEATURE_LABELS).map(([key, label]) => {
@@ -612,20 +535,19 @@ export default function AdminDashboard() {
                             <button
                               key={key}
                               onClick={() => handleToggleFeature(userDetails.user._id, key, enabled)}
-                              className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition border ${
+                              className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition border ${
                                 enabled
-                                  ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/20 dark:text-green-400'
-                                  : 'border-red-200 bg-red-50 text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400'
+                                  ? 'border-green-300 bg-green-50 text-green-700'
+                                  : 'border-red-300 bg-red-50 text-red-600'
                               }`}
                             >
+                              <span className="truncate">{label}</span>
                               {enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
-                              {label}
                             </button>
                           );
                         })}
                       </div>
                     </div>
-
                   </div>
                 ) : null}
               </div>
@@ -633,82 +555,66 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Leaderboard Tab */}
+        {/* ── Leaderboard Tab ── */}
         {activeTab === 'leaderboard' && (
-          <div className="glass-card rounded-2xl overflow-hidden">
-            <div className="p-5 border-b border-slate-100 dark:border-slate-800">
-              <h2 className="font-black text-lg dark:text-white flex items-center gap-2">
-                <Trophy size={20} className="text-yellow-500" /> Watch Time Leaderboard
-              </h2>
-              <p className="text-slate-400 text-sm">All users ranked by total completed video watch time</p>
+          <div className="clay-card bg-white border border-[#FED7AA] rounded-2xl overflow-hidden">
+            <div className="p-5 border-b border-[#FED7AA] flex items-center justify-between">
+              <div>
+                <h2 className="font-black text-lg text-[#431407] flex items-center gap-2">
+                  <Trophy size={20} className="text-[#EA580C]" /> Verified Watch Time Rankings
+                </h2>
+                <p className="text-xs text-[#78716C] mt-0.5">Calculated from verified server-side playback session heartbeats</p>
+              </div>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table className="w-full text-left border-collapse text-sm">
                 <thead>
-                  <tr className="bg-slate-100/50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
-                    <th className="p-4 font-bold text-slate-600 dark:text-slate-300 text-sm">#</th>
-                    <th className="p-4 font-bold text-slate-600 dark:text-slate-300 text-sm">User</th>
-                    <th className="p-4 font-bold text-slate-600 dark:text-slate-300 text-sm">Status</th>
-                    <th className="p-4 font-bold text-slate-600 dark:text-slate-300 text-sm text-center">Watch Time</th>
-                    <th className="p-4 font-bold text-slate-600 dark:text-slate-300 text-sm text-center">Videos</th>
-                    <th className="p-4 font-bold text-slate-600 dark:text-slate-300 text-sm text-center">Courses</th>
-                    <th className="p-4 font-bold text-slate-600 dark:text-slate-300 text-sm text-center">Streak</th>
-                    <th className="p-4 font-bold text-slate-600 dark:text-slate-300 text-sm">Joined</th>
+                  <tr className="bg-[#FFF7ED] border-b border-[#FED7AA] text-xs font-black text-[#78716C] uppercase">
+                    <th className="p-4">Rank</th>
+                    <th className="p-4">Student</th>
+                    <th className="p-4">Category</th>
+                    <th className="p-4 text-center">Verified Study Time</th>
+                    <th className="p-4 text-center">Videos Finished</th>
+                    <th className="p-4 text-center">Streak</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                <tbody className="divide-y divide-[#FED7AA]/50">
                   {leaderboard.map((u, idx) => {
                     const rank = idx + 1;
-                    const medals = ['🥇', '🥈', '🥉'];
                     return (
-                      <tr key={u._id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition">
-                        <td className="p-4">
-                          <span className="text-xl">{rank <= 3 ? medals[rank - 1] : rank}</span>
-                        </td>
+                      <tr key={u._id} className="hover:bg-[#FFF7ED]/70 transition">
+                        <td className="p-4 font-black text-[#EA580C]">#{rank}</td>
                         <td className="p-4">
                           <div className="flex items-center gap-3">
-                            {u.avatar ? (
-                              <img src={u.avatar} className="w-9 h-9 rounded-xl object-cover" alt="" />
-                            ) : (
-                              <div className="w-9 h-9 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-xl flex items-center justify-center text-white font-bold text-sm">
-                                {getInitials(u.name)}
-                              </div>
-                            )}
+                            <div className="w-8 h-8 bg-[#EA580C] text-white rounded-xl flex items-center justify-center font-bold text-xs">
+                              {getInitials(u.name)}
+                            </div>
                             <div>
-                              <div className="flex items-center gap-1.5">
-                                <div className={`w-2 h-2 rounded-full ${u.isOnline ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
-                                <p className="font-bold text-sm dark:text-white">{u.name}</p>
-                              </div>
-                              <p className="text-xs text-slate-400">{u.email}</p>
+                              <p className="font-bold text-[#431407]">{u.name}</p>
+                              <p className="text-xs text-[#78716C]">{u.email}</p>
                             </div>
                           </div>
                         </td>
                         <td className="p-4">
-                          <span className={`badge text-xs ${u.status === 'blocked' ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'}`}>
-                            {u.status || 'active'}
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#FFF7ED] text-[#EA580C] border border-[#FED7AA]">
+                            {u.category || 'skills'}
                           </span>
                         </td>
-                        <td className="p-4 text-center">
-                          <span className="font-black text-indigo-600 dark:text-indigo-400">{formatDuration(u.totalWatchTime)}</span>
+                        <td className="p-4 text-center font-black text-[#EA580C]">
+                          {formatDuration(u.totalWatchTime || 0)}
                         </td>
-                        <td className="p-4 text-center">
-                          <span className="font-bold dark:text-slate-300">{u.completedVideos}</span>
+                        <td className="p-4 text-center font-bold text-[#78716C]">
+                          {u.completedVideos || 0}
                         </td>
-                        <td className="p-4 text-center">
-                          <span className="font-bold dark:text-slate-300">{u.totalCourses}</span>
-                        </td>
-                        <td className="p-4 text-center">
-                          <span className="font-bold text-orange-500">{u.currentStreak}🔥</span>
-                        </td>
-                        <td className="p-4 text-xs text-slate-400">
-                          {new Date(u.joinedAt).toLocaleDateString('en-IN')}
+                        <td className="p-4 text-center font-black text-[#C2410C]">
+                          {u.currentStreak || 0}🔥
                         </td>
                       </tr>
                     );
                   })}
                   {leaderboard.length === 0 && (
                     <tr>
-                      <td colSpan="8" className="p-12 text-center text-slate-400 italic">No users yet.</td>
+                      <td colSpan="6" className="p-12 text-center text-[#78716C] italic">No ranking records found.</td>
                     </tr>
                   )}
                 </tbody>
@@ -717,68 +623,53 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Bug Reports Tab */}
+        {/* ── Bug Reports Tab ── */}
         {activeTab === 'bugs' && (
-          <div className="glass-card rounded-2xl overflow-hidden">
-            <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <div>
-                <h2 className="font-black text-lg dark:text-white flex items-center gap-2">
-                  <Bug size={20} className="text-red-500" /> Bug Reports
-                </h2>
-                <p className="text-slate-400 text-sm">
-                  {bugReports.filter(b => b.status === 'pending').length} pending · {bugReports.filter(b => b.status === 'resolved').length} resolved
-                </p>
-              </div>
+          <div className="clay-card bg-white border border-[#FED7AA] rounded-2xl overflow-hidden">
+            <div className="p-5 border-b border-[#FED7AA]">
+              <h2 className="font-black text-lg text-[#431407] flex items-center gap-2">
+                <Bug size={20} className="text-[#DC2626]" /> Student Bug Reports
+              </h2>
+              <p className="text-xs text-[#78716C] mt-0.5">
+                {bugReports.filter(b => b.status === 'pending').length} pending · {bugReports.filter(b => b.status === 'resolved').length} resolved
+              </p>
             </div>
 
-            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            <div className="divide-y divide-[#FED7AA]/50">
               {bugReports.length === 0 ? (
-                <div className="p-12 text-center text-slate-400 italic">No bug reports yet. 🎉</div>
+                <div className="p-12 text-center text-[#78716C] italic">No active bug reports. Everything is running smoothly! 🎉</div>
               ) : (
                 bugReports.map(bug => (
-                  <div key={bug._id} className="p-5 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition">
+                  <div key={bug._id} className="p-5 hover:bg-[#FFF7ED]/50 transition">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                            bug.status === 'resolved' ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'
-                          }`} />
-                          <h3 className="font-bold dark:text-white truncate">{bug.title}</h3>
-                          <span className={`badge text-xs ${
-                            bug.severity === 'critical' ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' :
-                            bug.severity === 'high' ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400' :
-                            bug.severity === 'medium' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                            'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                          <h3 className="font-bold text-[#431407] truncate">{bug.title}</h3>
+                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                            bug.severity === 'critical' ? 'bg-red-100 text-red-700' :
+                            bug.severity === 'high' ? 'bg-orange-100 text-orange-700' :
+                            'bg-yellow-100 text-yellow-700'
                           }`}>{bug.severity || 'low'}</span>
                         </div>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 line-clamp-2">{bug.description}</p>
-                        {bug.steps && <p className="text-xs text-slate-400 mt-1">Steps: {bug.steps}</p>}
-                        <div className="flex items-center gap-3 mt-2 text-xs text-slate-400">
-                          <span>By: <strong className="text-slate-600 dark:text-slate-300">{bug.userId?.name || 'Unknown'}</strong></span>
-                          <span>{new Date(bug.createdAt).toLocaleDateString('en-IN')}</span>
-                          {bug.browser && <span>Browser: {bug.browser}</span>}
+                        <p className="text-xs text-[#78716C]">{bug.description}</p>
+                        {bug.steps && <p className="text-xs text-[#78716C] mt-1">Steps: {bug.steps}</p>}
+                        <div className="flex items-center gap-3 mt-2 text-[11px] text-[#78716C]">
+                          <span>Reported by: <strong>{bug.userId?.name || 'Student'}</strong></span>
+                          <span>{new Date(bug.createdAt).toLocaleDateString()}</span>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        {bug.status !== 'resolved' ? (
-                          <button
-                            onClick={() => handleUpdateBugStatus(bug._id, 'resolved')}
-                            className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-xl bg-green-100 text-green-700 hover:bg-green-500 hover:text-white dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-600 dark:hover:text-white transition"
-                          >
-                            <CheckCircle2 size={13} /> Resolve
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleUpdateBugStatus(bug._id, 'pending')}
-                            className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-xl bg-yellow-100 text-yellow-700 hover:bg-yellow-500 hover:text-white dark:bg-yellow-900/30 dark:text-yellow-400 transition"
-                          >
-                            <AlertTriangle size={13} /> Re-open
-                          </button>
-                        )}
+                        <button
+                          onClick={() => handleUpdateBugStatus(bug._id, bug.status === 'resolved' ? 'pending' : 'resolved')}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-xl transition ${
+                            bug.status === 'resolved' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'
+                          }`}
+                        >
+                          {bug.status === 'resolved' ? 'Reopen' : 'Resolve'}
+                        </button>
                         <button
                           onClick={() => handleDeleteBug(bug._id)}
-                          className="p-1.5 bg-red-50 text-red-500 hover:bg-red-500 hover:text-white dark:bg-red-900/20 dark:hover:bg-red-600 rounded-lg transition"
-                          title="Delete"
+                          className="p-1.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-lg transition"
                         >
                           <Trash2 size={13} />
                         </button>
@@ -791,177 +682,107 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Course Creator Tab */}
+        {/* ── Course Creator Tab ── */}
         {activeTab === 'courses' && (
           <div className="max-w-4xl mx-auto">
             <AdminCourseCreator />
           </div>
         )}
 
-        {/* Playlist Manager Tab */}
+        {/* ── Playlist Manager Tab ── */}
         {activeTab === 'playlists' && (
           <div className="max-w-5xl mx-auto">
             <AdminPlaylistManager />
           </div>
         )}
 
-        {/* Quiz Manager Tab */}
-        {activeTab === 'quiz' && (
-          <div className="max-w-4xl mx-auto">
-            <AdminQuizManager />
-          </div>
-        )}
-
-        {/* AI Quiz Generator Tab */}
-        {activeTab === 'ai_quiz' && (
-          <div className="max-w-5xl mx-auto">
-            <AdminAIQuiz />
-          </div>
-        )}
-
-        {/* Permissions Tab */}
-        {activeTab === 'permissions' && (
-          <div className="glass-card rounded-2xl overflow-hidden">
-            <div className="p-5 border-b border-slate-100 dark:border-slate-800">
-              <h2 className="font-black text-lg dark:text-white flex items-center gap-2">
-                <ShieldAlert size={20} className="text-purple-500" /> Quiz Permission Manager
-              </h2>
-              <p className="text-slate-400 text-sm mt-1">Assign quiz roles to control what each user can do in the quiz system.</p>
-            </div>
-            <div className="p-4">
-              <div className="mb-4 text-xs text-slate-400">
-                <strong className="text-slate-600 dark:text-slate-300">Role Levels:</strong>
-                {' '}<span className="badge bg-slate-100 dark:bg-slate-800 text-slate-500 mr-1">Normal</span>Can attempt quizzes
-                {' '}<span className="badge bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 mr-1">Question Creator</span>Can add questions
-                {' '}<span className="badge bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 mr-1">Quiz Manager</span>Can start/stop quizzes
-                {' '}<span className="badge bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400">Super Admin</span>Full quiz control
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-100/50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
-                      <th className="p-4 font-bold text-slate-600 dark:text-slate-300 text-sm">User</th>
-                      <th className="p-4 font-bold text-slate-600 dark:text-slate-300 text-sm">Email</th>
-                      <th className="p-4 font-bold text-slate-600 dark:text-slate-300 text-sm">Current Role</th>
-                      <th className="p-4 font-bold text-slate-600 dark:text-slate-300 text-sm">Assign Role</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {users.map(u => (
-                      <tr key={u._id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition">
-                        <td className="p-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
-                              {getInitials(u.name)}
-                            </div>
-                            <span className="font-bold text-sm dark:text-white">{u.name}</span>
-                          </div>
-                        </td>
-                        <td className="p-4 text-sm text-slate-400">{u.email}</td>
-                        <td className="p-4">
-                          <span className={`badge text-xs ${
-                            u.quizRole === 'super_admin' ? 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400' :
-                            u.quizRole === 'quiz_manager' ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400' :
-                            u.quizRole === 'question_creator' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' :
-                            'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
-                          }`}>{u.quizRole || 'normal'}</span>
-                        </td>
-                        <td className="p-4">
-                          <select
-                            value={u.quizRole || 'normal'}
-                            onChange={e => handleSetQuizRole(u._id, e.target.value)}
-                            disabled={quizRoleUpdating[u._id]}
-                            className="px-3 py-1.5 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50"
-                          >
-                            <option value="normal">Normal</option>
-                            <option value="question_creator">Question Creator</option>
-                            <option value="quiz_manager">Quiz Manager</option>
-                            <option value="super_admin">Super Admin</option>
-                          </select>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Delete Requests Tab */}
+        {/* ── Delete Requests Tab ── */}
         {activeTab === 'delete_requests' && (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="max-w-4xl mx-auto">
             <AdminDeleteRequests />
           </div>
         )}
 
-        {/* Push & Theme Tab */}
+        {/* ── Settings & Push Tab ── */}
         {activeTab === 'notifications' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            
-            {/* Theme Changer */}
-            <div className="glass-card rounded-2xl p-6">
+            {/* Design System Status */}
+            <div className="clay-card bg-white border border-[#FED7AA] rounded-2xl p-6">
               <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-purple-100 text-purple-600 rounded-xl">
+                <div className="p-2.5 bg-[#FFF7ED] border border-[#FED7AA] text-[#EA580C] rounded-xl">
                   <Palette size={20} />
                 </div>
-                <h2 className="text-xl font-black dark:text-white">Theme & Styling</h2>
-              </div>
-              <p className="text-sm text-slate-500 mb-6">Switch the entire application color schema dynamically. This sets the theme **Globally** for all active users watching screens instantly!</p>
-              
-              <button
-                onClick={toggleLavenderTheme}
-                className={`w-full py-4 rounded-2xl font-bold flex flex-col items-center justify-center gap-2 border-2 transition ${isLavender ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300'}`}
-              >
-                <div className="flex gap-2">
-                  <span className="w-6 h-6 rounded-full bg-[#f97316] shadow"></span>
-                  <span className="w-6 h-6 rounded-full bg-[#8b5cf6] shadow"></span>
+                <div>
+                  <h2 className="text-lg font-black text-[#431407]">Orange Claymorphism System</h2>
+                  <p className="text-xs text-[#78716C]">Design Token Architecture (Zero Gradients Policy)</p>
                 </div>
-                {isLavender ? 'Lavender Theme Active ✨' : 'Switch to Lavender ✨'}
-              </button>
+              </div>
+              <p className="text-xs text-[#78716C] mb-4 leading-relaxed">
+                StudyMate strictly enforces a standardized, student-focused orange claymorphic palette across all pages.
+              </p>
+              
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {[
+                  { name: 'Primary Orange', hex: '#EA580C', bg: 'bg-[#EA580C]', text: 'text-white' },
+                  { name: 'Burnt Orange', hex: '#C2410C', bg: 'bg-[#C2410C]', text: 'text-white' },
+                  { name: 'Deep Orange', hex: '#9A3412', bg: 'bg-[#9A3412]', text: 'text-white' },
+                  { name: 'Bright Orange', hex: '#F97316', bg: 'bg-[#F97316]', text: 'text-white' },
+                  { name: 'Light Orange', hex: '#FED7AA', bg: 'bg-[#FED7AA]', text: 'text-[#431407]' },
+                  { name: 'Pale Background', hex: '#FFF7ED', bg: 'bg-[#FFF7ED]', text: 'text-[#431407]' },
+                ].map(c => (
+                  <div key={c.name} className={`p-2.5 rounded-xl border border-[#FED7AA] ${c.bg} ${c.text}`}>
+                    <p className="text-xs font-black">{c.name}</p>
+                    <p className="text-[10px] font-mono opacity-80">{c.hex}</p>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            {/* Push Notifications Setup */}
-            <div className="glass-card rounded-2xl p-6">
+            {/* Push Notifications Broadcast */}
+            <div className="clay-card bg-white border border-[#FED7AA] rounded-2xl p-6">
               <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-blue-100 text-blue-600 rounded-xl">
+                <div className="p-2.5 bg-[#FFF7ED] border border-[#FED7AA] text-[#EA580C] rounded-xl">
                   <Send size={20} />
                 </div>
-                <h2 className="text-xl font-black dark:text-white">Send Push Notification</h2>
+                <div>
+                  <h2 className="text-lg font-black text-[#431407]">Student Push Broadcast</h2>
+                  <p className="text-xs text-[#78716C]">Send FCM notifications to all active student devices</p>
+                </div>
               </div>
-              <p className="text-sm text-slate-500 mb-6">Send an FCM notification to all active devices or select a user from the 'Users' tab first.</p>
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Send To</label>
-                  <p className="text-sm font-bold bg-slate-100 dark:bg-slate-800 px-3 py-2 rounded-xl dark:text-white">
-                    {selectedUser ? `Target: ${selectedUser.name}` : 'Broadcast to ALL USERS'}
+                  <label className="block text-xs font-bold uppercase text-[#78716C] mb-1">Target Audience</label>
+                  <p className="text-xs font-black bg-[#FFF7ED] border border-[#FED7AA] px-3 py-2 rounded-xl text-[#EA580C]">
+                    {selectedUser ? `Specific Student: ${selectedUser.name}` : 'Broadcast to All Active Students'}
                   </p>
                 </div>
                 <div>
-                   <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Title</label>
-                   <input 
-                     value={pushTitle} onChange={e => setPushTitle(e.target.value)} 
-                     className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-400 dark:text-white"
-                     placeholder="New feature announcement!"
-                   />
+                  <label className="block text-xs font-bold uppercase text-[#78716C] mb-1">Notification Title</label>
+                  <input
+                    value={pushTitle}
+                    onChange={e => setPushTitle(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-[#FED7AA] bg-[#FFF7ED] focus:outline-none focus:ring-2 focus:ring-[#EA580C] text-[#431407]"
+                    placeholder="New study schedule posted!"
+                  />
                 </div>
                 <div>
-                   <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Message Body</label>
-                   <textarea 
-                     value={pushBody} onChange={e => setPushBody(e.target.value)} 
-                     rows="3"
-                     className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-400 dark:text-white resize-none"
-                     placeholder="Tap here to check out the new Thoughts section..."
-                   />
+                  <label className="block text-xs font-bold uppercase text-[#78716C] mb-1">Message Content</label>
+                  <textarea
+                    value={pushBody}
+                    onChange={e => setPushBody(e.target.value)}
+                    rows="3"
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-[#FED7AA] bg-[#FFF7ED] focus:outline-none focus:ring-2 focus:ring-[#EA580C] text-[#431407] resize-none"
+                    placeholder="Check out your updated curriculum and upcoming study goals..."
+                  />
                 </div>
                 
-                <button 
+                <button
                   onClick={handleSendPush}
                   disabled={pushSending}
-                  className="w-full btn-primary py-3 rounded-xl font-bold flex justify-center items-center gap-2"
+                  className="w-full btn-primary py-2.5 rounded-xl font-bold flex justify-center items-center gap-2 text-sm"
                 >
-                  {pushSending ? <span className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" /> : <><Send size={18}/> Push Now</>}
+                  {pushSending ? <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" /> : <><Send size={15}/> Send Broadcast</>}
                 </button>
               </div>
             </div>
@@ -971,10 +792,9 @@ export default function AdminDashboard() {
 
             {/* Suggested Playlists */}
             <SuggestedPlaylistsAdmin />
-
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }

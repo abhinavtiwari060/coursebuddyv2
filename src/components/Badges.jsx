@@ -18,7 +18,7 @@ export default function Badges({ videos, streak }) {
         {achievements.map((ach, i) => (
           <div key={i} className={`flex flex-col items-center p-4 rounded-xl border text-center transition-all ${
             ach.unlocked 
-              ? 'bg-gradient-to-b from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/20 border-orange-200 dark:border-orange-800/50 shadow-sm'
+              ? 'bg-[#FFF7ED] border border-[#FED7AA] shadow-sm'
               : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 opacity-60 grayscale'
           }`}>
             <div className={`p-3 rounded-full mb-2 ${ach.unlocked ? 'bg-orange-100 text-orange-600 dark:bg-orange-800/50' : 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-500'}`}>

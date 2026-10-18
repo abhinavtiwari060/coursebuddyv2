@@ -75,7 +75,7 @@ export default function ThoughtCard({ thought, onUpdate, onDelete }) {
           {thought.avatar ? (
             <img src={thought.avatar} className="w-10 h-10 rounded-full object-cover shadow-sm ring-2 ring-orange-100 dark:ring-orange-900/30" alt="" />
           ) : (
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 shadow-sm flex items-center justify-center text-white font-black text-sm ring-2 ring-indigo-100 dark:ring-indigo-900/30">
+            <div className="w-10 h-10 rounded-full bg-[#EA580C] shadow-sm flex items-center justify-center text-white font-black text-sm ring-2 ring-[#FED7AA]">
               {getInitials(thought.username)}
             </div>
           )}

@@ -8,6 +8,9 @@ import nodemailer from 'nodemailer';
 import axios from 'axios';
 import Groq from 'groq-sdk';
 
+import http from 'http';
+import { Server as SocketIOServer } from 'socket.io';
+
 // Models
 import User from './models/User.js';
 import Video from './models/Video.js';
@@ -28,6 +31,10 @@ import UserProgress from './models/UserProgress.js';
 import QuizAssignment from './models/QuizAssignment.js';
 import DeleteRequest from './models/DeleteRequest.js';
 import Playlist from './models/Playlist.js';
+import Todo from './models/Todo.js';
+import ChatMessage from './models/ChatMessage.js';
+import StudySession from './models/StudySession.js';
+import WatchHistory from './models/WatchHistory.js';
 
 
 
@@ -71,6 +78,13 @@ try {
 dotenv.config();
 
 const app = express();
+const server = http.createServer(app);
+const io = new SocketIOServer(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"]
+  }
+});
 
 app.use(express.json());
 
@@ -111,6 +125,392 @@ const adminMiddleware = (req, res, next) => {
   next();
 };
 
+// ── Socket.IO Setup with Category Rooms & 48h TTL ─────────
+const VALID_CHAT_ROOMS = ['government-exams', 'iit-neet', 'skills', 'other'];
+const userMessageRateMap = new Map();
+
+io.use(async (socket, next) => {
+  try {
+    const token =
+      socket.handshake.auth?.token ||
+      socket.handshake.headers?.authorization?.split(' ')[1] ||
+      socket.handshake.query?.token;
+
+    if (!token) {
+      return next(new Error('Authentication token required'));
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+    const user = await User.findById(decoded.id).select('name email role avatar category');
+    if (!user) {
+      return next(new Error('User not found'));
+    }
+
+    socket.user = {
+      id: user._id.toString(),
+      name: user.name,
+      avatar: user.avatar || '',
+      category: user.category || 'other',
+      role: user.role,
+    };
+    next();
+  } catch (err) {
+    next(new Error('Invalid socket authentication: ' + err.message));
+  }
+});
+
+io.on('connection', (socket) => {
+  socket.on('join_room', (room) => {
+    if (VALID_CHAT_ROOMS.includes(room)) {
+      socket.join(room);
+    }
+  });
+
+  socket.on('leave_room', (room) => {
+    socket.leave(room);
+  });
+
+  socket.on('send_message', async (data, callback) => {
+    try {
+      const { room, message } = data;
+      if (!VALID_CHAT_ROOMS.includes(room)) {
+        if (callback) callback({ error: 'Invalid room' });
+        return;
+      }
+
+      if (!message || typeof message !== 'string') {
+        if (callback) callback({ error: 'Message content required' });
+        return;
+      }
+
+      const trimmed = message.trim();
+      if (trimmed.length === 0 || trimmed.length > 1000) {
+        if (callback) callback({ error: 'Message must be between 1 and 1000 characters' });
+        return;
+      }
+
+      const now = Date.now();
+      const lastMsgTime = userMessageRateMap.get(socket.user.id) || 0;
+      if (now - lastMsgTime < 800) {
+        if (callback) callback({ error: 'Please wait a moment before sending another message' });
+        return;
+      }
+      userMessageRateMap.set(socket.user.id, now);
+
+      const chatMsg = new ChatMessage({
+        room,
+        senderId: socket.user.id,
+        senderName: socket.user.name,
+        senderAvatar: socket.user.avatar || '',
+        message: trimmed,
+        createdAt: new Date(),
+        expiresAt: new Date(now + 48 * 60 * 60 * 1000),
+      });
+      await chatMsg.save();
+
+      const payload = {
+        _id: chatMsg._id,
+        room: chatMsg.room,
+        senderId: chatMsg.senderId,
+        senderName: chatMsg.senderName,
+        senderAvatar: chatMsg.senderAvatar,
+        message: chatMsg.message,
+        createdAt: chatMsg.createdAt,
+      };
+
+      io.to(room).emit('receive_message', payload);
+      if (callback) callback({ success: true, message: payload });
+    } catch (err) {
+      console.error('Socket message error:', err);
+      if (callback) callback({ error: 'Failed to send message' });
+    }
+  });
+});
+
+// GET /api/chat/messages/:room
+app.get('/api/chat/messages/:room', authMiddleware, async (req, res) => {
+  try {
+    const { room } = req.params;
+    if (!VALID_CHAT_ROOMS.includes(room)) {
+      return res.status(400).json({ error: 'Invalid room' });
+    }
+
+    const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    const messages = await ChatMessage.find({
+      room,
+      createdAt: { $gte: fortyEightHoursAgo },
+    })
+      .sort({ createdAt: 1 })
+      .limit(100)
+      .lean();
+
+    res.json(messages);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Personal To-Do Routes ─────────────────────────────
+app.get('/api/todos', authMiddleware, async (req, res) => {
+  try {
+    const { status, category } = req.query;
+    const query = { userId: req.user.id };
+
+    const now = new Date();
+    if (status === 'completed') {
+      query.completed = true;
+    } else if (status === 'pending') {
+      query.completed = false;
+    } else if (status === 'overdue') {
+      query.completed = false;
+      query.dueDate = { $ne: null, $lt: now };
+    }
+
+    if (category && category !== 'all') {
+      query.category = category;
+    }
+
+    const todos = await Todo.find(query)
+      .sort({ completed: 1, dueDate: 1, createdAt: -1 })
+      .lean();
+
+    const totalCount = await Todo.countDocuments({ userId: req.user.id });
+    const pendingCount = await Todo.countDocuments({ userId: req.user.id, completed: false });
+    const completedCount = await Todo.countDocuments({ userId: req.user.id, completed: true });
+    const overdueCount = await Todo.countDocuments({
+      userId: req.user.id,
+      completed: false,
+      dueDate: { $ne: null, $lt: now },
+    });
+
+    res.json({
+      todos,
+      counts: {
+        total: totalCount,
+        pending: pendingCount,
+        completed: completedCount,
+        overdue: overdueCount,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/todos', authMiddleware, async (req, res) => {
+  try {
+    const { title, description, dueDate, category } = req.body;
+    if (!title || !title.trim()) {
+      return res.status(400).json({ error: 'Title is required' });
+    }
+
+    const todo = new Todo({
+      userId: req.user.id,
+      title: title.trim(),
+      description: (description || '').trim(),
+      dueDate: dueDate ? new Date(dueDate) : null,
+      category: category || 'general',
+    });
+
+    await todo.save();
+    res.status(201).json(todo);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/todos/:id', authMiddleware, async (req, res) => {
+  try {
+    const { title, description, dueDate, category, completed } = req.body;
+    const todo = await Todo.findOne({ _id: req.params.id, userId: req.user.id });
+    if (!todo) {
+      return res.status(404).json({ error: 'Task not found or access denied' });
+    }
+
+    if (title !== undefined) todo.title = title.trim();
+    if (description !== undefined) todo.description = description.trim();
+    if (dueDate !== undefined) todo.dueDate = dueDate ? new Date(dueDate) : null;
+    if (category !== undefined) todo.category = category;
+    if (completed !== undefined) {
+      todo.completed = Boolean(completed);
+      todo.completedAt = completed ? new Date() : null;
+    }
+
+    await todo.save();
+    res.json(todo);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/todos/:id/toggle', authMiddleware, async (req, res) => {
+  try {
+    const todo = await Todo.findOne({ _id: req.params.id, userId: req.user.id });
+    if (!todo) {
+      return res.status(404).json({ error: 'Task not found or access denied' });
+    }
+
+    todo.completed = !todo.completed;
+    todo.completedAt = todo.completed ? new Date() : null;
+    await todo.save();
+
+    res.json(todo);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/todos/:id', authMiddleware, async (req, res) => {
+  try {
+    const todo = await Todo.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
+    if (!todo) {
+      return res.status(404).json({ error: 'Task not found or access denied' });
+    }
+    res.json({ message: 'Task deleted successfully', id: req.params.id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Validated Video Watch-Time Tracking ───────────────
+const lastHeartbeatMap = new Map();
+
+app.post('/api/watch/heartbeat', authMiddleware, async (req, res) => {
+  try {
+    const { sessionId, videoId, courseId, playlistId, currentPosition, durationSeconds, incrementSeconds } = req.body;
+
+    if (!sessionId || !videoId) {
+      return res.status(400).json({ error: 'sessionId and videoId are required' });
+    }
+
+    const inc = Number(incrementSeconds) || 0;
+    if (inc <= 0) {
+      return res.json({ status: 'ignored', reason: 'zero or negative increment' });
+    }
+    if (inc > 30) {
+      return res.status(400).json({ error: 'Watch time increment out of bounds' });
+    }
+
+    const now = Date.now();
+    const lastTime = lastHeartbeatMap.get(sessionId) || 0;
+    if (now - lastTime < 3000) {
+      return res.status(429).json({ error: 'Heartbeat rate exceeded' });
+    }
+    lastHeartbeatMap.set(sessionId, now);
+
+    const dateKey = new Date().toISOString().split('T')[0];
+
+    const sessionLog = new StudySession({
+      userId: req.user.id,
+      videoId: String(videoId),
+      courseId: courseId ? String(courseId) : '',
+      playlistId: playlistId ? String(playlistId) : '',
+      sessionId: String(sessionId),
+      durationSeconds: Math.round(inc),
+      dateKey,
+    });
+    await sessionLog.save();
+
+    const isCompleted = (durationSeconds > 0 && currentPosition >= durationSeconds * 0.9);
+    const progressPercent = durationSeconds > 0 ? Math.min(100, Math.round((currentPosition / durationSeconds) * 100)) : 0;
+
+    if (playlistId) {
+      await WatchHistory.findOneAndUpdate(
+        { userId: req.user.id, playlistId, videoId },
+        {
+          $set: {
+            watchedSeconds: Math.round(currentPosition),
+            durationSeconds: Math.round(durationSeconds),
+            progressPercent,
+            lastWatchedAt: new Date(),
+            ...(isCompleted ? { completed: true, completedAt: new Date() } : {}),
+          },
+          $inc: { watchCount: 1 },
+        },
+        { upsert: true, new: true }
+      );
+    }
+
+    if (isCompleted) {
+      await Video.updateMany(
+        { userId: req.user.id, $or: [{ _id: mongoose.Types.ObjectId.isValid(videoId) ? videoId : null }, { youtubeVideoId: videoId }] },
+        { $set: { completed: true, completedAt: new Date() } }
+      );
+    }
+
+    let streak = await Streak.findOne({ userId: req.user.id });
+    if (!streak) {
+      streak = new Streak({ userId: req.user.id, currentStreak: 1, lastActiveDate: dateKey });
+      await streak.save();
+    } else {
+      const lastActive = streak.lastActiveDate;
+      if (lastActive !== dateKey) {
+        const lastDate = new Date(lastActive || 0);
+        const currentDate = new Date(dateKey);
+        const diffDays = Math.round((currentDate - lastDate) / (1000 * 60 * 60 * 24));
+        if (diffDays === 1) {
+          streak.currentStreak += 1;
+        } else if (diffDays > 1) {
+          streak.currentStreak = 1;
+        }
+        streak.lastActiveDate = dateKey;
+        await streak.save();
+      }
+    }
+
+    res.json({
+      success: true,
+      recordedSeconds: inc,
+      isCompleted,
+      progressPercent,
+    });
+  } catch (err) {
+    console.error('Watch heartbeat error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/watch/stats', authMiddleware, async (req, res) => {
+  try {
+    const todayKey = new Date().toISOString().split('T')[0];
+
+    const todaySessions = await StudySession.aggregate([
+      { $match: { userId: new mongoose.Types.ObjectId(req.user.id), dateKey: todayKey } },
+      { $group: { _id: null, totalSeconds: { $sum: '$durationSeconds' } } },
+    ]);
+    const todaySeconds = todaySessions[0]?.totalSeconds || 0;
+
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const weeklyBreakdown = await StudySession.aggregate([
+      { $match: { userId: new mongoose.Types.ObjectId(req.user.id), createdAt: { $gte: sevenDaysAgo } } },
+      { $group: { _id: '$dateKey', totalSeconds: { $sum: '$durationSeconds' } } },
+      { $sort: { _id: 1 } },
+    ]);
+
+    const allTimeSessions = await StudySession.aggregate([
+      { $match: { userId: new mongoose.Types.ObjectId(req.user.id) } },
+      { $group: { _id: null, totalSeconds: { $sum: '$durationSeconds' } } },
+    ]);
+    const allTimeSeconds = allTimeSessions[0]?.totalSeconds || 0;
+
+    const completedVideosCount = await Video.countDocuments({ userId: req.user.id, completed: true });
+
+    const lastWatched = await WatchHistory.findOne({ userId: req.user.id })
+      .sort({ lastWatchedAt: -1 })
+      .lean();
+
+    res.json({
+      todaySeconds,
+      allTimeSeconds,
+      weeklyBreakdown,
+      completedVideosCount,
+      lastWatched,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Auth Routes ─────────────────────
 app.post('/api/auth/signup', async (req, res) => {
   try {
@@ -142,7 +542,7 @@ app.post('/api/auth/signup', async (req, res) => {
 
     res.status(201).json({
       token,
-      user: { id: user._id, name, email, role, status: user.status },
+      user: { id: user._id, name, email, role, status: user.status, category: user.category || null },
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -175,7 +575,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     res.json({
       token,
-      user: { id: user._id, name: user.name, email, role: user.role, status: user.status, features: user.features, isOnline: user.isOnline },
+      user: { id: user._id, name: user.name, email, role: user.role, status: user.status, category: user.category || null, features: user.features, isOnline: user.isOnline },
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -213,7 +613,7 @@ app.post('/api/auth/google', async (req, res) => {
 
     res.json({
       token,
-      user: { id: user._id, name: user.name, email: user.email, role: user.role, status: user.status, avatar: user.avatar, features: user.features, isOnline: user.isOnline },
+      user: { id: user._id, name: user.name, email: user.email, role: user.role, status: user.status, category: user.category || null, avatar: user.avatar, features: user.features, isOnline: user.isOnline },
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -233,6 +633,7 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
         email: user.email,
         role: user.role,
         status: user.status,
+        category: user.category || null,
         avatar: user.avatar,
         features: user.features,
         isOnline: user.isOnline
@@ -319,19 +720,29 @@ app.get('/api/profile', authMiddleware, async (req, res) => {
 
 app.put('/api/profile', authMiddleware, async (req, res) => {
   try {
-    const { name, bio, avatar } = req.body;
+    const { name, bio, avatar, category } = req.body;
     const updates = {};
     if (name) updates.name = name;
     if (bio !== undefined) updates.bio = bio;
     if (avatar !== undefined) updates.avatar = avatar;
+    if (category !== undefined) {
+      const validCategories = ['government-exams', 'iit-neet', 'skills', 'other'];
+      if (category && !validCategories.includes(category)) {
+        return res.status(400).json({ error: 'Invalid learning category' });
+      }
+      updates.category = category;
+    }
 
-    const user = await User.findByIdAndUpdate(
+    const updatedUser = await User.findByIdAndUpdate(
       req.user.id,
       updates,
       { new: true }
     ).select('-password');
 
-    res.json(user);
+    res.json({
+      user: updatedUser,
+      ...updatedUser.toObject(),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -555,29 +966,81 @@ app.post('/api/streak/update', authMiddleware, async (req, res) => {
 // ── Leaderboard ─────────────────────
 app.get('/api/leaderboard', authMiddleware, async (req, res) => {
   try {
-    const allUsers = await User.find({ role: 'user', status: 'active' }).select('-password');
+    const { timeframe = 'all' } = req.query; // 'weekly', 'monthly', 'all'
+    let dateFilter = {};
+    const now = Date.now();
 
+    if (timeframe === 'weekly') {
+      dateFilter = { createdAt: { $gte: new Date(now - 7 * 24 * 60 * 60 * 1000) } };
+    } else if (timeframe === 'monthly') {
+      dateFilter = { createdAt: { $gte: new Date(now - 30 * 24 * 60 * 60 * 1000) } };
+    }
+
+    // 1. Aggregate verified study time from StudySession
+    const watchAgg = await StudySession.aggregate([
+      { $match: dateFilter },
+      { $group: { _id: '$userId', totalWatchTime: { $sum: '$durationSeconds' } } },
+      { $sort: { totalWatchTime: -1 } }
+    ]);
+
+    const verifiedWatchMap = new Map();
+    watchAgg.forEach(item => {
+      verifiedWatchMap.set(item._id.toString(), item.totalWatchTime);
+    });
+
+    // 2. Fetch all active users
+    const allUsers = await User.find({ status: 'active' }).select('name email avatar role createdAt').lean();
+
+    // 3. Map user stats
     const leaderboard = await Promise.all(allUsers.map(async (u) => {
-      const videos = await Video.find({ userId: u._id, completed: true });
-      const streak = await Streak.findOne({ userId: u._id });
-      const totalWatchTime = videos.reduce((acc, v) => acc + (v.duration || 0), 0);
-      const courses = await Course.countDocuments({ userId: u._id });
+      const uId = u._id.toString();
+      let verifiedTime = verifiedWatchMap.get(uId) || 0;
+
+      // Fallback for all-time if no StudySession yet: compute from completed videos duration
+      if (timeframe === 'all' && verifiedTime === 0) {
+        const legacyVideos = await Video.find({ userId: u._id, completed: true }).select('duration').lean();
+        verifiedTime = legacyVideos.reduce((acc, v) => acc + (v.duration || 0), 0);
+      }
+
+      const completedCount = await Video.countDocuments({ userId: u._id, completed: true });
+      const streakDoc = await Streak.findOne({ userId: u._id }).lean();
+
       return {
         _id: u._id,
         name: u.name,
         email: u.email.replace(/(.{2})(.*)(?=@)/, (gp1, gp2, gp3) => gp1 + '*'.repeat(gp2.length)),
-        avatar: u.avatar,
-        isOnline: u.isOnline,
-        totalWatchTime,
-        completedVideos: videos.length,
-        totalCourses: courses,
-        currentStreak: streak?.currentStreak || 0,
+        avatar: u.avatar || '',
+        totalWatchTime: verifiedTime,
+        completedVideos: completedCount,
+        currentStreak: streakDoc?.currentStreak || 0,
         joinedAt: u.createdAt,
       };
     }));
 
-    leaderboard.sort((a, b) => b.totalWatchTime - a.totalWatchTime);
-    res.json(leaderboard);
+    // 4. Sort descending
+    leaderboard.sort((a, b) => {
+      if (b.totalWatchTime !== a.totalWatchTime) {
+        return b.totalWatchTime - a.totalWatchTime;
+      }
+      return b.completedVideos - a.completedVideos;
+    });
+
+    // 5. Assign ranks
+    leaderboard.forEach((entry, idx) => {
+      entry.rank = idx + 1;
+    });
+
+    const currentUserId = req.user.id.toString();
+    const currentUserEntry = leaderboard.find(e => e._id.toString() === currentUserId);
+    const currentUserRank = currentUserEntry ? currentUserEntry.rank : leaderboard.length + 1;
+
+    res.json({
+      timeframe,
+      rankings: leaderboard.slice(0, 50),
+      currentUserRank,
+      currentUserStats: currentUserEntry || null,
+      totalParticipants: leaderboard.length,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1215,7 +1678,7 @@ app.get('/api/admin/youtube/playlist', authMiddleware, adminMiddleware, async (r
  */
 app.post('/api/admin/courses/assign', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const { userIds, courseName, videos } = req.body;
+    const { userIds, courseName, videos, category, subcategory } = req.body;
     if (!userIds?.length || !courseName || !videos?.length) {
       return res.status(400).json({ error: 'userIds, courseName, and videos are required' });
     }
@@ -1228,7 +1691,16 @@ app.post('/api/admin/courses/assign', authMiddleware, adminMiddleware, async (re
       // Create course for user (or reuse if same name exists)
       let course = await Course.findOne({ userId: uid, name: courseName });
       if (!course) {
-        course = await Course.create({ userId: uid, name: courseName });
+        course = await Course.create({
+          userId: uid,
+          name: courseName,
+          category: category || 'skills',
+          subcategory: subcategory || ''
+        });
+      } else if (category && (!course.category || course.category === 'other')) {
+        course.category = category;
+        if (subcategory) course.subcategory = subcategory;
+        await course.save();
       }
 
       // Bulk insert videos (skip duplicates by link)
@@ -1253,6 +1725,7 @@ app.post('/api/admin/courses/assign', authMiddleware, adminMiddleware, async (re
           thumbnail: v.thumbnail || '',
           tag: v.tag || '',
           order: startOrder + idx,
+          position: v.position !== undefined ? v.position : (startOrder + idx),
         }));
 
       if (newVideos.length) {
@@ -1475,7 +1948,7 @@ app.get('/api/admin/playlists', authMiddleware, adminMiddleware, async (req, res
 /** POST /api/admin/playlists/import — import a playlist and its videos */
 app.post('/api/admin/playlists/import', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const { playlistUrl, courseName } = req.body;
+    const { playlistUrl, courseName, category, subcategory } = req.body;
     if (!playlistUrl || !courseName) return res.status(400).json({ error: 'URL and Course Name are required' });
 
     const apiKey = process.env.YOUTUBE_API_KEY;
@@ -1543,7 +2016,16 @@ app.post('/api/admin/playlists/import', authMiddleware, adminMiddleware, async (
     // Find or create course
     let course = await Course.findOne({ name: courseName });
     if (!course) {
-      course = await Course.create({ name: courseName, userId: req.user.id });
+      course = await Course.create({
+        name: courseName,
+        userId: req.user.id,
+        category: category || 'skills',
+        subcategory: subcategory || ''
+      });
+    } else if (category) {
+      course.category = category;
+      if (subcategory) course.subcategory = subcategory;
+      await course.save();
     }
 
     // Create or Update Playlist doc
@@ -1552,6 +2034,8 @@ app.post('/api/admin/playlists/import', authMiddleware, adminMiddleware, async (
       {
         courseId: course._id,
         courseName: course.name,
+        category: category || 'skills',
+        subcategory: subcategory || '',
         playlistUrl: `https://www.youtube.com/playlist?list=${playlistId}`,
         title: plData.snippet.title,
         description: plData.snippet.description,
@@ -1572,49 +2056,68 @@ app.post('/api/admin/playlists/import', authMiddleware, adminMiddleware, async (
   }
 });
 
-/** POST /api/admin/playlists/:id/refresh — refresh videos from YouTube */
+/** POST /api/admin/playlists/:id/refresh — refresh videos from YouTube preserving exact playlist order */
 app.post('/api/admin/playlists/:id/refresh', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const playlist = await Playlist.findOne({ playlistId: req.params.id });
     if (!playlist) return res.status(404).json({ error: 'Playlist not found' });
 
-    // Reuse the logic from import but simpler... 
-    // Actually better to just reuse the import logic by triggering it or calling a shared function.
-    // For now, let's keep it simple and just do it here.
     const apiKey = process.env.YOUTUBE_API_KEY;
-    const itemsRes = await axios.get('https://www.googleapis.com/youtube/v3/playlistItems', {
-      params: { part: 'snippet,contentDetails', maxResults: 50, playlistId: playlist.playlistId, key: apiKey }
-    });
-    const items = itemsRes.data.items || [];
-    const videoIds = items.map(i => i.contentDetails.videoId);
+    if (!apiKey) return res.status(503).json({ error: 'YOUTUBE_API_KEY missing' });
 
-    let durationMap = {};
-    if (videoIds.length > 0) {
-      const vidRes = await axios.get('https://www.googleapis.com/youtube/v3/videos', {
-        params: { part: 'contentDetails', id: videoIds.join(','), key: apiKey }
+    let videos = [];
+    let nextPageToken = '';
+
+    do {
+      const itemsRes = await axios.get('https://www.googleapis.com/youtube/v3/playlistItems', {
+        params: {
+          part: 'snippet,contentDetails',
+          maxResults: 50,
+          playlistId: playlist.playlistId,
+          pageToken: nextPageToken || undefined,
+          key: apiKey
+        }
       });
-      for (const v of vidRes.data.items || []) {
-        durationMap[v.id] = parseISO8601Duration(v.contentDetails.duration);
-      }
-    }
+      const data = itemsRes.data;
+      nextPageToken = data.nextPageToken || '';
 
-    const videos = items.map((item, idx) => ({
-      videoId: item.contentDetails.videoId,
-      title: item.snippet.title,
-      description: item.snippet.description,
-      thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
-      duration: durationMap[item.contentDetails.videoId] || 0,
-      position: idx,
-      channelTitle: item.snippet.videoOwnerChannelTitle,
-      publishedAt: item.snippet.publishedAt,
-    }));
+      const currentBatchVideoIds = (data.items || []).map(i => i.contentDetails?.videoId).filter(Boolean);
+
+      let durationMap = {};
+      if (currentBatchVideoIds.length > 0) {
+        const vidRes = await axios.get('https://www.googleapis.com/youtube/v3/videos', {
+          params: { part: 'contentDetails', id: currentBatchVideoIds.join(','), key: apiKey }
+        });
+        for (const v of vidRes.data.items || []) {
+          durationMap[v.id] = parseISO8601Duration(v.contentDetails?.duration);
+        }
+      }
+
+      for (const item of data.items || []) {
+        const vidId = item.contentDetails?.videoId;
+        if (!vidId || item.snippet?.title === 'Deleted video' || item.snippet?.title === 'Private video') continue;
+        videos.push({
+          videoId: vidId,
+          title: item.snippet?.title || '',
+          description: item.snippet?.description || '',
+          thumbnail: item.snippet?.thumbnails?.medium?.url || item.snippet?.thumbnails?.default?.url || '',
+          duration: durationMap[vidId] || 0,
+          position: item.snippet?.position !== undefined ? Number(item.snippet.position) : videos.length,
+          channelTitle: item.snippet?.videoOwnerChannelTitle || '',
+          publishedAt: item.snippet?.publishedAt,
+        });
+      }
+    } while (nextPageToken);
+
+    videos.sort((a, b) => (a.position || 0) - (b.position || 0));
 
     playlist.videos = videos;
+    playlist.videoCount = videos.length;
+    playlist.totalDuration = videos.reduce((acc, v) => acc + (v.duration || 0), 0);
     playlist.lastFetchedAt = new Date();
-    playlist.totalDuration = Object.values(durationMap).reduce((a, b) => a + b, 0);
     await playlist.save();
 
-    res.json({ message: 'Playlist refreshed', playlist });
+    res.json({ message: 'Playlist refreshed with exact sequence preserved', playlist });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2466,8 +2969,8 @@ const PORT = process.env.PORT || 5000;
 mongoose.connect(process.env.MONGO_URI, { family: 4 })
   .then(() => {
     console.log("✅ MongoDB connected");
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`🚀 Server running on port ${PORT}`);
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 Server running on port ${PORT} with Socket.IO enabled`);
     });
   })
   .catch(err => console.log("❌ DB Error:", err));

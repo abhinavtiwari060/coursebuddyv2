@@ -25,6 +25,8 @@ export default function AdminCourseCreator() {
   const [playlistUrl, setPlaylistUrl]     = useState('');
   const [courseName, setCourseName]       = useState('');
   const [tag, setTag]                     = useState('');
+  const [category, setCategory]           = useState('skills');
+  const [subcategory, setSubcategory]     = useState('');
   const [fetching, setFetching]           = useState(false);
   const [fetchError, setFetchError]       = useState('');
 
@@ -136,6 +138,8 @@ export default function AdminCourseCreator() {
         userIds: selectedUsers,
         courseName: courseName.trim(),
         videos: videosToAssign,
+        category,
+        subcategory,
       });
       setAssignResult(result);
       setStep('done');
@@ -225,7 +229,7 @@ export default function AdminCourseCreator() {
                   value={courseName}
                   onChange={e => setCourseName(e.target.value)}
                   placeholder="Auto-filled from playlist"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-red-400 dark:text-white text-sm"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-[#EA580C] dark:text-white text-sm"
                 />
               </div>
               <div>
@@ -234,7 +238,32 @@ export default function AdminCourseCreator() {
                   value={tag}
                   onChange={e => setTag(e.target.value)}
                   placeholder="e.g. Python, React, DSA"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-red-400 dark:text-white text-sm"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-[#EA580C] dark:text-white text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5">Learning Category</label>
+                <select
+                  value={category}
+                  onChange={e => setCategory(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-[#EA580C] dark:text-white text-sm font-semibold"
+                >
+                  <option value="government-exams">Government Exam Preparation</option>
+                  <option value="iit-neet">IIT / NEET Preparation</option>
+                  <option value="skills">Skills & Career Development</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5">Subcategory (optional)</label>
+                <input
+                  value={subcategory}
+                  onChange={e => setSubcategory(e.target.value)}
+                  placeholder="e.g. Web Development, DSA, Physics, UPSC"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-[#EA580C] dark:text-white text-sm"
                 />
               </div>
             </div>
@@ -419,7 +448,7 @@ export default function AdminCourseCreator() {
                   }`}>
                     {checked && <CheckCircle2 size={12} className="text-white" />}
                   </div>
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center text-white text-xs font-black flex-shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-[#EA580C] flex items-center justify-center text-white text-xs font-black flex-shrink-0">
                     {u.name?.[0]?.toUpperCase() || '?'}
                   </div>
                   <div className="flex-1 min-w-0">

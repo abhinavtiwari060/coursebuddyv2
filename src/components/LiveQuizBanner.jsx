@@ -34,12 +34,12 @@ export default function LiveQuizBanner() {
       <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl -mr-20 -mt-20 group-hover:bg-purple-500/20 transition-all duration-700" />
       <div className="absolute bottom-0 left-0 w-48 h-48 bg-orange-500/10 rounded-full blur-3xl -ml-20 -mb-20 group-hover:bg-orange-500/20 transition-all duration-700" />
 
-      <div className="glass-card relative border border-purple-200/50 dark:border-purple-900/30 overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-white/80 to-purple-50/50 dark:from-slate-900/80 dark:to-purple-950/20 shadow-xl shadow-purple-500/5">
+      <div className="glass-card relative border border-[#FED7AA] overflow-hidden rounded-[2.5rem] bg-[#FFF7ED] shadow-sm">
         <div className="flex flex-col md:flex-row items-center gap-8 p-8 md:p-10">
           
           {/* Icon/Visual Section */}
           <div className="relative flex-shrink-0">
-             <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-3xl flex items-center justify-center text-white shadow-2xl shadow-purple-500/30 rotate-3 group-hover:rotate-6 transition-transform duration-500">
+             <div className="w-20 h-20 bg-[#EA580C] rounded-3xl flex items-center justify-center text-white shadow-md border border-[#C2410C]">
                 <Trophy size={38} strokeWidth={2.5} />
              </div>
              <div className="absolute -bottom-2 -right-2 w-10 h-10 bg-amber-400 rounded-2xl flex items-center justify-center text-white shadow-lg border-4 border-white dark:border-slate-800 -rotate-12 group-hover:-rotate-18 transition-transform duration-500">
@@ -75,7 +75,7 @@ export default function LiveQuizBanner() {
           <div className="flex-shrink-0 w-full md:w-auto">
              <button 
                onClick={() => navigate(`/quiz/${activeQuiz._id}`)}
-               className="w-full md:w-auto bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white px-10 py-5 rounded-2xl font-black shadow-xl shadow-purple-500/25 transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-3 group"
+               className="w-full md:w-auto bg-[#EA580C] hover:bg-[#C2410C] text-white px-10 py-5 rounded-2xl font-black shadow-md transition-all flex items-center justify-center gap-3 group"
              >
                 Start Quiz Now
                 <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />

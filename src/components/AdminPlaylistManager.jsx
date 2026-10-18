@@ -25,6 +25,8 @@ export default function AdminPlaylistManager() {
   // Import form
   const [playlistUrl, setPlaylistUrl] = useState('');
   const [courseName, setCourseName]   = useState('');
+  const [category, setCategory]       = useState('skills');
+  const [subcategory, setSubcategory] = useState('');
   const [importing, setImporting]     = useState(false);
   const [importErr, setImportErr]     = useState('');
   const [importOk, setImportOk]       = useState('');
@@ -64,6 +66,8 @@ export default function AdminPlaylistManager() {
       const res = await playlistService.importPlaylist({
         playlistUrl: playlistUrl.trim(),
         courseName: courseName.trim(),
+        category,
+        subcategory,
       });
       setImportOk(`✅ "${res.playlist.title}" imported — ${res.playlist.videoCount} videos!`);
       setPlaylistUrl(''); setCourseName('');
@@ -145,7 +149,7 @@ export default function AdminPlaylistManager() {
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-4 py-2 rounded-xl text-sm font-bold capitalize transition ${tab === t ? 'bg-red-500 text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10'}`}
+            className={`px-4 py-2 rounded-xl text-sm font-bold capitalize transition ${tab === t ? 'bg-[#EA580C] text-white shadow-md' : 'bg-white/80 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-orange-50'}`}
           >
             {t === 'import' ? '+ Import Playlist' : '📋 Manage Playlists'}
           </button>
@@ -192,8 +196,32 @@ export default function AdminPlaylistManager() {
                 value={courseName}
                 onChange={e => setCourseName(e.target.value)}
                 placeholder="e.g. React Masterclass, DSA with Python"
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-red-400 dark:text-white text-sm"
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-[#EA580C] dark:text-white text-sm"
               />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5">Learning Category</label>
+                <select
+                  value={category}
+                  onChange={e => setCategory(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-[#EA580C] dark:text-white text-sm font-semibold"
+                >
+                  <option value="government-exams">Government Exam Preparation</option>
+                  <option value="iit-neet">IIT / NEET Preparation</option>
+                  <option value="skills">Skills & Career Development</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5">Subcategory (optional)</label>
+                <input
+                  value={subcategory}
+                  onChange={e => setSubcategory(e.target.value)}
+                  placeholder="e.g. Web Development, DSA, JEE Physics"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-[#EA580C] dark:text-white text-sm"
+                />
+              </div>
             </div>
             <button
               type="submit"
@@ -347,7 +375,7 @@ export default function AdminPlaylistManager() {
                     <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${checked ? 'bg-indigo-500 border-indigo-500' : 'border-slate-300'}`}>
                       {checked && <CheckCircle2 size={10} className="text-white" />}
                     </div>
-                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center text-white text-xs font-black flex-shrink-0">{u.name?.[0]?.toUpperCase()}</div>
+                    <div className="w-7 h-7 rounded-full bg-[#EA580C] flex items-center justify-center text-white text-xs font-black flex-shrink-0">{u.name?.[0]?.toUpperCase()}</div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold dark:text-white truncate">{u.name}</p>
                       <p className="text-xs text-slate-500 truncate">{u.email}</p>

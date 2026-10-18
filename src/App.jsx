@@ -11,11 +11,12 @@ import Signup from './pages/Signup';
 import AdminDashboard from './pages/AdminDashboard';
 import Profile from './pages/Profile';
 import Leaderboard from './pages/Leaderboard';
+import MyLearning from './pages/MyLearning';
+import Categories from './pages/Categories';
+import Todos from './pages/Todos';
+import Chat from './pages/Chat';
 import Thoughts from './pages/Thoughts';
 import VideoPlayer from './pages/VideoPlayer';
-import QuizPage from './pages/QuizPage';
-import QuizResults from './pages/QuizResults';
-import QuizLeaderboard from './pages/QuizLeaderboard';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import ErrorBoundary from './components/ErrorBoundary';
 import GlobalNav from './components/GlobalNav';
@@ -23,14 +24,14 @@ import GlobalNav from './components/GlobalNav';
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
-  if (loading) return <div className="min-h-screen flex items-center justify-center dark:text-white">Loading...</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-[#78716C]">Loading StudyMate...</div>;
   if (!user) return <Navigate to="/login" replace />;
   return children;
 };
 
 const FeatureGate = ({ children, feature }) => {
   const { user, loading } = useAuth();
-  if (loading) return <div className="min-h-screen flex items-center justify-center dark:text-white">Loading...</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-[#78716C]">Loading StudyMate...</div>;
   if (!user) return <Navigate to="/login" replace />;
   if (user.features && user.features[feature] === false) return <Navigate to="/dashboard" replace />;
   return children;
@@ -52,26 +53,10 @@ export default function App() {
     };
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
-    // Load global theme settings
-    const loadSettings = async () => {
-      try {
-        const config = await settingsService.getSettings();
-        if (config.theme) {
-          document.documentElement.classList.remove('theme-lavender');
-          if (config.theme !== 'default') {
-            document.documentElement.classList.add(config.theme);
-          }
-        }
-      } catch { /* non-critical */ }
-    };
-    loadSettings();
-    const interval = setInterval(loadSettings, 15000);
-
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('online',  handleOnline);
-      clearInterval(interval);
     };
   }, []);
 
@@ -85,7 +70,7 @@ export default function App() {
   return (
     <>
       {isOffline && (
-        <div className="fixed top-0 left-0 w-full z-[100] bg-red-500 text-white py-2 text-center text-sm font-bold flex justify-center items-center gap-2 shadow-md">
+        <div className="fixed top-0 left-0 w-full z-[100] bg-red-600 text-white py-2 text-center text-xs sm:text-sm font-bold flex justify-center items-center gap-2 shadow-md">
           <WifiOff size={16} /> You are currently offline. Some features may be unavailable.
         </div>
       )}
@@ -93,7 +78,7 @@ export default function App() {
       {deferredPrompt && (
         <button
           onClick={handleInstallPWA}
-          className="fixed bottom-6 right-6 z-50 bg-gradient-to-r from-blue-600 to-indigo-600 hover:brightness-110 text-white px-5 py-3 rounded-full shadow-2xl flex items-center gap-2 font-bold transition-transform hover:scale-105 active:scale-95"
+          className="fixed bottom-6 right-6 z-50 bg-[#EA580C] hover:bg-[#C2410C] text-white px-5 py-3 rounded-2xl shadow-xl border border-[#9A3412] flex items-center gap-2 font-bold transition-transform hover:scale-105 active:scale-95"
         >
           <Download size={20} /> Install App
         </button>
@@ -108,13 +93,14 @@ export default function App() {
               <Route path="/signup" element={<Signup />} />
               <Route path="/admin"  element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
               <Route path="/dashboard" element={<ProtectedRoute><Home /></ProtectedRoute>} />
-              <Route path="/profile"   element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+              <Route path="/my-learning" element={<ProtectedRoute><MyLearning /></ProtectedRoute>} />
+              <Route path="/categories" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
+              <Route path="/todos" element={<ProtectedRoute><Todos /></ProtectedRoute>} />
+              <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
+              <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
               <Route path="/leaderboard" element={<FeatureGate feature="canUseLeaderboard"><Leaderboard /></FeatureGate>} />
-              <Route path="/thoughts"    element={<FeatureGate feature="canUseCommunity"><Thoughts /></FeatureGate>} />
+              <Route path="/thoughts" element={<FeatureGate feature="canUseCommunity"><Thoughts /></FeatureGate>} />
               <Route path="/course/:courseId/video/:videoId" element={<ProtectedRoute><VideoPlayer /></ProtectedRoute>} />
-              <Route path="/quiz/:id"             element={<ProtectedRoute><QuizPage /></ProtectedRoute>} />
-              <Route path="/quiz/:id/results"     element={<ProtectedRoute><QuizResults /></ProtectedRoute>} />
-              <Route path="/quiz/:id/leaderboard" element={<ProtectedRoute><QuizLeaderboard /></ProtectedRoute>} />
               <Route path="/privacy" element={<PrivacyPolicy />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>

@@ -16,7 +16,11 @@ const videoSchema = new mongoose.Schema({
   completedAt: { type: Date, default: null },
   isPendingDelete: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
-  order: { type: Number, default: Date.now }
+  order: { type: Number, default: 0 },
+  position: { type: Number, default: 0 } // stable numeric YouTube playlist position
 });
+
+videoSchema.index({ userId: 1, course: 1, position: 1 });
+videoSchema.index({ playlistId: 1, position: 1 });
 
 export default mongoose.model('Video', videoSchema);

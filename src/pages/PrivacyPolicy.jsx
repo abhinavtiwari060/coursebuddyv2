@@ -69,7 +69,7 @@ export default function PrivacyPolicy() {
                 </p>
               </section>
 
-              <div className="p-8 rounded-[2.5rem] bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-xl shadow-orange-500/20">
+              <div className="p-8 rounded-[2.5rem] bg-[#EA580C] text-white shadow-xl border border-[#C2410C]">
                 <div className="flex items-center gap-4 mb-4">
                   <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-md">
                     <Mail size={24} />

@@ -9,6 +9,13 @@ const playlistSchema = new mongoose.Schema({
   // Admin-defined fields
   courseId:     { type: mongoose.Schema.Types.ObjectId, ref: 'Course', required: true },
   courseName:   { type: String, required: true },
+  category:     { 
+    type: String, 
+    enum: ['government-exams', 'iit-neet', 'skills', 'other', 'general'], 
+    default: 'general',
+    index: true 
+  },
+  subcategory:  { type: String, default: '' },
   playlistId:   { type: String, required: true, unique: true }, // YouTube playlist ID
   playlistUrl:  { type: String, required: true },
   title:        { type: String, required: true },

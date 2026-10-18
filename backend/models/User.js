@@ -8,6 +8,11 @@ const userSchema = new mongoose.Schema({
   status: { type: String, enum: ['active', 'blocked'], default: 'active' },
   bio: { type: String, default: '' },
   avatar: { type: String, default: '' }, // URL or base64
+  category: { 
+    type: String, 
+    enum: ['government-exams', 'iit-neet', 'skills', 'other', null], 
+    default: null 
+  },
   fcmToken: { type: String, default: null }, // For Push Notifications
   isOnline: { type: Boolean, default: false },
 

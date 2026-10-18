@@ -124,7 +124,7 @@ export default function AdminAIQuiz() {
     <div className="space-y-6 animate-fade-in">
 
       {/* ── Header ── */}
-      <div className="flex items-center gap-4 p-6 bg-gradient-to-br from-violet-600 to-indigo-600 rounded-[2rem] text-white shadow-2xl shadow-violet-500/20 relative overflow-hidden">
+      <div className="flex items-center gap-4 p-6 bg-[#9A3412] rounded-[2rem] text-white shadow-md border border-[#7C2D12] relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/4 pointer-events-none" />
         <div className="absolute bottom-0 left-0 w-40 h-40 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/4 pointer-events-none" />
         <div className="relative w-16 h-16 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center flex-shrink-0 shadow-inner">
@@ -215,7 +215,7 @@ export default function AdminAIQuiz() {
         <button
           onClick={handleGenerate}
           disabled={loading || !topic.trim()}
-          className="w-full flex items-center justify-center gap-3 py-3.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-black text-sm transition shadow-lg shadow-violet-500/20 hover:shadow-violet-500/30"
+          className="w-full flex items-center justify-center gap-3 py-3.5 bg-[#EA580C] hover:bg-[#C2410C] disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-black text-sm transition shadow-md"
         >
           {loading
             ? <><Loader2 size={18} className="animate-spin" /> Generating with Groq AI...</>
@@ -419,7 +419,7 @@ export default function AdminAIQuiz() {
                 <button
                   onClick={handleSave}
                   disabled={saving || !quizTitle.trim()}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white rounded-xl font-bold text-sm transition shadow-lg shadow-violet-500/20 disabled:opacity-50"
+                  className="flex items-center gap-2 px-5 py-2.5 bg-[#EA580C] hover:bg-[#C2410C] text-white rounded-xl font-bold text-sm transition shadow-md disabled:opacity-50"
                 >
                   {saving ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
                   {saving ? 'Saving...' : 'Save Quiz'}

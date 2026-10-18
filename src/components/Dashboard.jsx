@@ -14,9 +14,7 @@ export default function Dashboard({ videos }) {
   return (
     <div className="mb-8">
       {/* Premium Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 bg-gradient-to-br from-blue-900 to-slate-900 p-8 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden">
-        <div className="absolute top-[-20%] right-[-10%] w-64 h-64 bg-blue-500/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-[-20%] left-[-10%] w-64 h-64 bg-purple-500/20 rounded-full blur-3xl pointer-events-none" />
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 bg-[#9A3412] p-8 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden border border-[#7C2D12]">
         
         <div className="flex items-center gap-6 relative z-10">
           <div className="w-20 h-20 bg-white/10 backdrop-blur-xl border border-white/10 rounded-3xl flex items-center justify-center shadow-inner">
@@ -90,7 +88,7 @@ export default function Dashboard({ videos }) {
 
         {/* Watch Time Stat */}
         <div className="stat-card glass-card p-6 rounded-3xl relative overflow-hidden group hover:-translate-y-1 transition-transform">
-          <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-purple-500/5 pointer-events-none" />
+          <div className="absolute inset-0 bg-[#FFF7ED] pointer-events-none opacity-50" />
           <div className="flex items-center justify-between mb-4 relative z-10">
             <div className="w-12 h-12 rounded-2xl bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-500 shadow-inner group-hover:scale-110 transition">
               <Clock size={26} strokeWidth={2.5} />

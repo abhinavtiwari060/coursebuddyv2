@@ -30,7 +30,7 @@ export default function ThoughtEditor({ initialThought, onSuccess, onCancel }) {
 
   return (
     <div className="glass-card rounded-2xl p-5 mb-6 animate-fade-in relative overflow-hidden">
-      <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-orange-400 to-amber-500"></div>
+      <div className="absolute top-0 inset-x-0 h-1 bg-[#EA580C]"></div>
       <h3 className="font-black text-lg dark:text-white mb-3 flex items-center gap-2">
         <Edit3 size={18} className="text-orange-500" />
         {initialThought ? 'Edit your thought' : 'Share your thought of the day'}

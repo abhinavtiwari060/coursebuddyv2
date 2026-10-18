@@ -4,7 +4,7 @@ export default function ProgressBar({ progress, label }) {
       {label && <p className="text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">{label}</p>}
       <div className="w-full bg-orange-100 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden">
         <div
-          className="bg-gradient-to-r from-orange-400 to-amber-400 h-2.5 rounded-full transition-all duration-700 ease-out"
+          className="bg-[#EA580C] h-2.5 rounded-full transition-all duration-700 ease-out"
           style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
         />
       </div>
