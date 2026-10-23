@@ -57,12 +57,15 @@ export default function VideoPlayer() {
   const [savingNotes, setSavingNotes] = useState(false);
   const [savedNotesFeedback, setSavedNotesFeedback] = useState(false);
   const [activeWatchSec, setActiveWatchSec] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   // Playback session ref tracking for background heartbeats
   const sessionIdRef = useRef('sess_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8));
   const timerRef = useRef(null);
   const unsentSecondsRef = useRef(0);
   const currentVideoRef = useRef(null);
+  const playerRef = useRef(null);
+  const iframeRef = useRef(null);
 
   // Sync current video to ref and notes
   useEffect(() => {
@@ -70,6 +73,8 @@ export default function VideoPlayer() {
     if (currentVideo) {
       setNotes(currentVideo.notes || '');
     }
+    // Video switched: pause timer until playback resumes
+    setIsPlaying(false);
   }, [currentVideo]);
 
   // Load course details and its videos from the backend
@@ -203,9 +208,124 @@ export default function VideoPlayer() {
     }
   }, [courseId, course?._id, activeWatchSec]);
 
-  // Active watch timer when player page is visible
+  // Initialize YouTube Iframe API player wrapper
+  const initYTPlayer = useCallback(() => {
+    if (typeof window === 'undefined' || !window.YT || !window.YT.Player || !iframeRef.current) return;
+
+    try {
+      if (playerRef.current && typeof playerRef.current.destroy === 'function') {
+        try {
+          playerRef.current.destroy();
+        } catch { /* ignore */ }
+        playerRef.current = null;
+      }
+
+      playerRef.current = new window.YT.Player(iframeRef.current, {
+        events: {
+          onStateChange: (event) => {
+            // window.YT.PlayerState: PLAYING = 1, PAUSED = 2, ENDED = 0
+            if (event.data === 1) {
+              setIsPlaying(true);
+            } else if (event.data === 2 || event.data === 0) {
+              setIsPlaying(false);
+            }
+          },
+        },
+      });
+    } catch (err) {
+      console.warn('[YTPlayer] Iframe binding note:', err?.message || err);
+    }
+  }, []);
+
+  // Dynamically load YouTube IFrame API script and bind to ready event
   useEffect(() => {
-    if (!currentVideo) return;
+    if (typeof window === 'undefined') return;
+
+    if (!window.YT) {
+      const existing = document.getElementById('youtube-iframe-api');
+      if (!existing) {
+        const tag = document.createElement('script');
+        tag.id = 'youtube-iframe-api';
+        tag.src = 'https://www.youtube.com/iframe_api';
+        document.head.appendChild(tag);
+      }
+    }
+
+    const prevReady = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      if (typeof prevReady === 'function') prevReady();
+      initYTPlayer();
+    };
+
+    if (window.YT && window.YT.Player) {
+      initYTPlayer();
+    }
+
+    return () => {
+      if (playerRef.current && typeof playerRef.current.destroy === 'function') {
+        try {
+          playerRef.current.destroy();
+        } catch { /* ignore */ }
+        playerRef.current = null;
+      }
+    };
+  }, [currentVideo?._id, initYTPlayer]);
+
+  // Synchronize via YouTube iframe postMessage events for instant reactivity
+  useEffect(() => {
+    const handleWindowMessage = (event) => {
+      if (!event.origin || (!event.origin.includes('youtube.com') && !event.origin.includes('youtube-nocookie.com'))) {
+        return;
+      }
+
+      try {
+        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (!data) return;
+
+        // 1. YouTube onStateChange event
+        if (data.event === 'onStateChange') {
+          if (data.info === 1) {
+            setIsPlaying(true);
+          } else if (data.info === 2 || data.info === 0) {
+            setIsPlaying(false);
+          }
+        }
+        // 2. YouTube infoDelivery event with playerState
+        else if (data.event === 'infoDelivery' && data.info) {
+          if (data.info.playerState === 1) {
+            setIsPlaying(true);
+          } else if (data.info.playerState === 2 || data.info.playerState === 0) {
+            setIsPlaying(false);
+          }
+        }
+      } catch {
+        // Non-JSON message from external browser extensions, safely ignore
+      }
+    };
+
+    window.addEventListener('message', handleWindowMessage);
+    return () => {
+      window.removeEventListener('message', handleWindowMessage);
+    };
+  }, []);
+
+  // Active study watch timer: runs ONLY while video is playing and document is visible
+  useEffect(() => {
+    // If paused, ended, or no video, clear any running interval immediately
+    if (!isPlaying || !currentVideo) {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      flushWatchHeartbeat();
+      return;
+    }
+
+    // Video is playing: clear any stale timer and start fresh 1-second interval
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
 
     timerRef.current = setInterval(() => {
       if (!document.hidden) {
@@ -225,7 +345,7 @@ export default function VideoPlayer() {
       }
       flushWatchHeartbeat();
     };
-  }, [currentVideo?._id, flushWatchHeartbeat]);
+  }, [isPlaying, currentVideo?._id, flushWatchHeartbeat]);
 
   const handleComplete = async () => {
     if (!currentVideo) return;
@@ -271,6 +391,11 @@ export default function VideoPlayer() {
   const completedCount = videos.filter((v) => v.completed).length;
   const progressPercent = videos.length > 0 ? Math.round((completedCount / videos.length) * 100) : 0;
   const activeYtId = extractYouTubeId(currentVideo);
+  const isDirectVideoLink = Boolean(
+    !activeYtId &&
+    currentVideo?.link &&
+    /\.(mp4|webm|ogg|m4v)(\?.*)?$/i.test(currentVideo.link)
+  );
 
   if (loading) {
     return (
@@ -355,9 +480,19 @@ export default function VideoPlayer() {
 
           <div className="flex items-center gap-3">
             {/* Live session time badge */}
-            <div className="hidden md:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FFF7ED] border border-[#FED7AA] text-xs font-bold text-[#EA580C]">
-              <Clock size={13} />
+            <div
+              className={`hidden md:inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-bold transition ${
+                isPlaying
+                  ? 'bg-[#FFF7ED] border-[#EA580C] text-[#EA580C] shadow-xs'
+                  : 'bg-white border-[#FED7AA] text-[#78716C]'
+              }`}
+              title={isPlaying ? 'Video playing - study timer running' : 'Video paused - study timer stopped'}
+            >
+              <Clock size={13} className={isPlaying ? 'animate-pulse text-[#EA580C]' : 'text-[#78716C]'} />
               <span>Session: {formatDuration(activeWatchSec)}</span>
+              {!isPlaying && activeWatchSec > 0 && (
+                <span className="text-[10px] font-semibold text-[#A8A29E] ml-0.5">(Paused)</span>
+              )}
             </div>
 
             {/* Course progress indicator */}
@@ -397,14 +532,27 @@ export default function VideoPlayer() {
                   <span className="text-xs font-semibold">Loading video player...</span>
                 </div>
                 <iframe
+                  ref={iframeRef}
+                  id="studymate-yt-iframe"
                   key={activeYtId}
-                  src={`https://www.youtube.com/embed/${activeYtId}?autoplay=1&enablejsapi=1&rel=0&modestbranding=1`}
+                  src={`https://www.youtube.com/embed/${activeYtId}?autoplay=1&enablejsapi=1&origin=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin : '')}&rel=0&modestbranding=1`}
                   title={currentVideo?.title || 'YouTube Video Player'}
                   className="w-full h-full border-0 relative z-10"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                   allowFullScreen
+                  onLoad={initYTPlayer}
                 />
               </>
+            ) : isDirectVideoLink ? (
+              <video
+                src={currentVideo.link}
+                controls
+                autoPlay
+                className="w-full h-full relative z-10"
+                onPlay={() => setIsPlaying(true)}
+                onPause={() => setIsPlaying(false)}
+                onEnded={() => setIsPlaying(false)}
+              />
             ) : (
               <div className="text-center text-white p-6 max-w-md">
                 <AlertCircle size={44} className="mx-auto text-amber-400 mb-3" />
