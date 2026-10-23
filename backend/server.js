@@ -39,15 +39,7 @@ import WatchHistory from './models/WatchHistory.js';
 
 
 
-app.get("/api/health", (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: "StudyMate backend is running",
-    timestamp: new Date().toISOString(),
-    uptime: Math.floor(process.uptime()),
-  });
-});
-
+dotenv.config();
 
 import fs from 'fs';
 import path from 'path';
@@ -73,19 +65,22 @@ try {
     console.log("🔥 Firebase Admin Initialized (via Environment Variables)");
     // 2. Fall back to local file if it exists
   } else {
-    const serviceAccount = JSON.parse(fs.readFileSync(path.join(__dirname, 'config', 'serviceAccountKey.json'), 'utf8'));
-    if (!admin.apps.length) {
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-      });
+    const serviceAccountPath = path.join(__dirname, 'config', 'serviceAccountKey.json');
+    if (fs.existsSync(serviceAccountPath)) {
+      const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
+      if (!admin.apps.length) {
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount)
+        });
+      }
+      console.log("🔥 Firebase Admin Initialized (via local file)");
+    } else {
+      console.log("ℹ️ No local serviceAccountKey.json found, skipping file-based Firebase Admin init");
     }
-    console.log("🔥 Firebase Admin Initialized (via local file)");
   }
 } catch (err) {
   console.log("Firebase Admin not configured correctly:", err.message);
 }
-
-dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
@@ -102,6 +97,15 @@ app.use(cors({
   origin: "*",
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
 }));
+
+app.get("/api/health", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "StudyMate backend is running",
+    timestamp: new Date().toISOString(),
+    uptime: Math.floor(process.uptime()),
+  });
+});
 
 // Logger
 app.use((req, res, next) => {
@@ -1250,19 +1254,99 @@ app.get('/api/courses/my', authMiddleware, async (req, res) => {
 app.post('/api/courses', authMiddleware, async (req, res) => {
   try {
     const { name, category, subcategory, description, thumbnail } = req.body;
-    if (!name?.trim()) return res.status(400).json({ error: 'Course name is required' });
+    // Normalize: trim leading/trailing whitespace and collapse internal repeated spaces
+    const normalizedName = name ? String(name).trim().replace(/\s+/g, ' ') : '';
+    if (!normalizedName) {
+      return res.status(400).json({ error: 'Course name is required' });
+    }
 
-    // Allow multiple courses with identical titles
+    // Check if THIS user already has an active course with the exact normalized title (case-insensitive)
+    const escapedName = normalizedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const existing = await Course.findOne({
+      userId: req.user.id,
+      name: { $regex: new RegExp(`^${escapedName}$`, 'i') },
+      isPendingDelete: { $ne: true }
+    });
+
+    if (existing) {
+      return res.status(409).json({
+        error: `A course titled "${existing.name}" already exists in your account. Please use a distinct title.`,
+        isDuplicate: true,
+        courseId: existing._id
+      });
+    }
+
     const course = new Course({
-      name: name.trim(),
+      name: normalizedName,
       category: category || 'skills',
-      subcategory: subcategory?.trim() || '',
-      description: description?.trim() || '',
-      thumbnail: thumbnail?.trim() || '',
+      subcategory: subcategory ? String(subcategory).trim() : '',
+      description: description ? String(description).trim() : '',
+      thumbnail: thumbnail ? String(thumbnail).trim() : '',
       userId: req.user.id
     });
     await course.save();
-    res.json(course);
+    res.status(201).json(course);
+  } catch (err) {
+    if (err.code === 11000) {
+      // Safe fallback for concurrent duplicate submissions
+      return res.status(409).json({
+        error: 'A course with this title already exists in your account.',
+        isDuplicate: true
+      });
+    }
+    console.error('[POST /api/courses] Error:', err);
+    res.status(500).json({ error: 'Failed to create course: ' + err.message });
+  }
+});
+
+app.get('/api/courses/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    let course = null;
+
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      course = await Course.findOne({ _id: id, isPendingDelete: { $ne: true } }).lean();
+    }
+    if (!course) {
+      course = await Course.findOne({ name: id, isPendingDelete: { $ne: true } }).lean();
+    }
+
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    // Load videos associated with this course and user
+    const videos = await Video.find({
+      userId: req.user.id,
+      $or: [
+        { course: course.name },
+        { course: String(course._id) }
+      ],
+      isPendingDelete: { $ne: true }
+    }).sort({ order: 1, position: 1, createdAt: 1 }).lean();
+
+    // Load linked playlists
+    const playlists = await Playlist.find({
+      $or: [
+        { courseId: course._id },
+        { courseName: course.name }
+      ]
+    }).lean();
+
+    const totalVideos = videos.length;
+    const completedVideos = videos.filter(v => v.completed).length;
+    const totalDuration = videos.reduce((acc, v) => acc + (v.duration || 0), 0);
+    const progress = totalVideos > 0 ? Math.round((completedVideos / totalVideos) * 100) : 0;
+
+    res.json({
+      ...course,
+      videos,
+      playlists,
+      totalVideos,
+      completedVideos,
+      totalDuration,
+      progress
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1270,22 +1354,48 @@ app.post('/api/courses', authMiddleware, async (req, res) => {
 
 app.delete('/api/courses/:id', authMiddleware, async (req, res) => {
   try {
-    const course = await Course.findOne({ _id: req.params.id, userId: req.user.id });
-    if (!course) return res.status(404).json({ error: 'Course not found' });
+    const { id } = req.params;
+    let course = null;
 
-    // Soft-delete: hide from user immediately, queue for admin approval
-    await Course.updateOne({ _id: course._id }, { $set: { isPendingDelete: true } });
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      course = await Course.findOne({
+        _id: id,
+        ...(req.user.role !== 'admin' ? { userId: req.user.id } : {})
+      });
+    }
 
-    const user = await User.findById(req.user.id).select('name');
-    await DeleteRequest.create({
+    if (!course) {
+      course = await Course.findOne({
+        name: id,
+        ...(req.user.role !== 'admin' ? { userId: req.user.id } : {})
+      });
+    }
+
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found or unauthorized' });
+    }
+
+    // Persist actual deletion in MongoDB
+    await Course.deleteOne({ _id: course._id });
+
+    // Delete associated user videos belonging to this course
+    await Video.deleteMany({
       userId: req.user.id,
-      userName: user?.name || 'Unknown',
-      itemId: String(course._id),
-      itemType: 'course',
-      itemName: course.name,
+      $or: [
+        { course: course.name },
+        { course: String(course._id) }
+      ]
     });
 
-    res.json({ message: 'Delete request submitted. Awaiting admin approval.' });
+    // Clean up related references
+    await DeleteRequest.deleteMany({ itemId: String(course._id) });
+    await UserProgress.deleteMany({ userId: req.user.id, courseId: String(course._id) });
+
+    res.status(200).json({
+      success: true,
+      message: 'Course and its associated lessons were deleted successfully',
+      id: String(course._id)
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1330,37 +1440,247 @@ app.get('/api/migrate-videos', async (req, res) => {
 
 app.post('/api/videos', authMiddleware, async (req, res) => {
   try {
-    // Get max order for this user+course to maintain sequence
-    const lastVideo = await Video.findOne({ userId: req.user.id, course: req.body.course })
-      .sort({ order: -1 });
-    const nextOrder = lastVideo ? (lastVideo.order || 0) + 1 : 1;
+    const { title, link, course, duration, thumbnail, notes, tag, platform, position, order } = req.body;
 
-    // Helper to extract ID
+    if (!title?.trim() || !link?.trim() || !course?.toString().trim()) {
+      return res.status(400).json({ error: 'Title, link, and course are required fields' });
+    }
+
+    // Explicitly validate _id if the client attempted to supply one
+    if (req.body._id !== undefined) {
+      if (!mongoose.Types.ObjectId.isValid(req.body._id)) {
+        return res.status(400).json({ error: 'Invalid MongoDB ObjectId supplied for video _id' });
+      }
+    }
+
+    // Helper to extract YouTube video ID from various link formats
     const extractVideoId = (url) => {
       if (!url) return null;
       const match = url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
       return match ? match[1] : null;
     };
 
-    const payload = { ...req.body };
-    if (!payload.youtubeVideoId && payload.link) {
-      payload.youtubeVideoId = extractVideoId(payload.link);
+    const ytId = req.body.youtubeVideoId || extractVideoId(link);
+
+    // Validate course reference and permissions
+    const courseTarget = course.toString().trim();
+    let courseDoc = null;
+    if (mongoose.Types.ObjectId.isValid(courseTarget)) {
+      courseDoc = await Course.findOne({ _id: courseTarget, isPendingDelete: { $ne: true } });
+    }
+    if (!courseDoc) {
+      courseDoc = await Course.findOne({ name: courseTarget, isPendingDelete: { $ne: true } });
     }
 
-    const video = new Video({
-      ...payload,
+    if (courseDoc && courseDoc.userId.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'You do not have permission to add lessons to this course' });
+    }
+
+    const resolvedCourseName = courseDoc ? courseDoc.name : courseTarget;
+    const resolvedCourseId = courseDoc ? String(courseDoc._id) : null;
+
+    // Check if this exact video already exists in this course for this user
+    if (ytId) {
+      const matchCourse = [{ course: resolvedCourseName }];
+      if (resolvedCourseId) matchCourse.push({ course: resolvedCourseId });
+
+      const existingVideo = await Video.findOne({
+        userId: req.user.id,
+        $or: matchCourse,
+        $and: [
+          {
+            $or: [
+              { youtubeVideoId: ytId },
+              { link: { $regex: new RegExp(ytId, 'i') } }
+            ]
+          }
+        ],
+        isPendingDelete: { $ne: true }
+      });
+
+      if (existingVideo) {
+        return res.status(409).json({
+          error: 'This video is already in this course track',
+          duplicate: true,
+          video: existingVideo
+        });
+      }
+    }
+
+    // Determine sequence order
+    const lastVideo = await Video.findOne({
       userId: req.user.id,
-      order: req.body.order !== undefined ? req.body.order : nextOrder,
+      $or: [
+        { course: resolvedCourseName },
+        ...(resolvedCourseId ? [{ course: resolvedCourseId }] : [])
+      ]
+    }).sort({ order: -1 });
+
+    const nextOrder = order !== undefined ? Number(order) : (lastVideo ? (lastVideo.order || 0) + 1 : 1);
+
+    // Create new Video document cleanly, letting MongoDB generate the valid ObjectId
+    const video = new Video({
+      userId: req.user.id,
+      course: resolvedCourseName,
+      title: title.trim(),
+      link: link.trim(),
+      youtubeVideoId: ytId || '',
+      playlistId: req.body.playlistId || '',
+      platform: platform || 'YouTube',
+      duration: Number(duration) || 0,
+      thumbnail: thumbnail || (ytId ? `https://i.ytimg.com/vi/${ytId}/mqdefault.jpg` : ''),
+      notes: notes || '',
+      tag: tag || 'playlist',
+      completed: Boolean(req.body.completed),
+      order: nextOrder,
+      position: position !== undefined ? Number(position) : nextOrder,
+      createdAt: new Date()
     });
+
     await video.save();
-    res.json(video);
+    res.status(201).json(video);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    if (err.name === 'ValidationError' || err.name === 'CastError') {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error('[POST /api/videos] Error:', err);
+    res.status(500).json({ error: 'Failed to create video: ' + err.message });
+  }
+});
+
+/** POST /api/videos/import-playlist — batch import YouTube playlist with duplicate detection */
+app.post('/api/videos/import-playlist', authMiddleware, async (req, res) => {
+  try {
+    const { courseId, courseName, playlistId, videos } = req.body;
+    if (!Array.isArray(videos) || videos.length === 0) {
+      return res.status(400).json({ error: 'No video items provided for import' });
+    }
+
+    const courseTarget = courseName?.trim() || courseId;
+    if (!courseTarget) {
+      return res.status(400).json({ error: 'Target course track is required' });
+    }
+
+    // Validate course permissions
+    let courseDoc = null;
+    if (courseId && mongoose.Types.ObjectId.isValid(courseId)) {
+      courseDoc = await Course.findOne({ _id: courseId, isPendingDelete: { $ne: true } });
+    }
+    if (!courseDoc && courseName) {
+      courseDoc = await Course.findOne({ name: courseName.trim(), isPendingDelete: { $ne: true } });
+    }
+
+    if (courseDoc && courseDoc.userId.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'You do not have permission to modify this course' });
+    }
+
+    const resolvedCourseName = courseDoc ? courseDoc.name : courseTarget;
+    const resolvedCourseId = courseDoc ? String(courseDoc._id) : null;
+
+    // Helper to extract YouTube video ID
+    const extractVideoId = (url) => {
+      if (!url) return null;
+      const match = url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
+      return match ? match[1] : null;
+    };
+
+    // Find all existing videos in this course for this user
+    const existingVideos = await Video.find({
+      userId: req.user.id,
+      $or: [
+        { course: resolvedCourseName },
+        ...(resolvedCourseId ? [{ course: resolvedCourseId }] : [])
+      ],
+      isPendingDelete: { $ne: true }
+    }).select('youtubeVideoId link').lean();
+
+    const existingYtIds = new Set(
+      existingVideos
+        .map(v => v.youtubeVideoId || extractVideoId(v.link))
+        .filter(Boolean)
+    );
+
+    // Get max order
+    const lastVideo = await Video.findOne({
+      userId: req.user.id,
+      $or: [
+        { course: resolvedCourseName },
+        ...(resolvedCourseId ? [{ course: resolvedCourseId }] : [])
+      ]
+    }).sort({ order: -1 });
+
+    let currentOrder = lastVideo ? (lastVideo.order || 0) : 0;
+
+    const toInsert = [];
+    const skipped = [];
+
+    for (let i = 0; i < videos.length; i++) {
+      const v = videos[i];
+      const ytId = v.youtubeVideoId || extractVideoId(v.link) || v.videoId;
+      if (!ytId) {
+        skipped.push({ title: v.title || `Lesson ${i + 1}`, reason: 'Missing YouTube identifier' });
+        continue;
+      }
+
+      if (existingYtIds.has(ytId)) {
+        skipped.push({ title: v.title || ytId, youtubeVideoId: ytId, reason: 'Already in course' });
+        continue;
+      }
+
+      // Track to prevent intra-playlist duplicates
+      existingYtIds.add(ytId);
+      currentOrder += 1;
+
+      toInsert.push({
+        userId: req.user.id,
+        course: resolvedCourseName,
+        title: v.title ? String(v.title).trim() : `Lesson ${currentOrder}`,
+        link: v.link || `https://www.youtube.com/watch?v=${ytId}`,
+        youtubeVideoId: ytId,
+        playlistId: playlistId || v.playlistId || '',
+        platform: 'YouTube',
+        duration: Number(v.duration) || 0,
+        thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${ytId}/mqdefault.jpg`,
+        tag: 'playlist',
+        completed: false,
+        order: currentOrder,
+        position: v.position !== undefined ? Number(v.position) : i,
+        createdAt: new Date()
+      });
+    }
+
+    let insertedDocs = [];
+    if (toInsert.length > 0) {
+      insertedDocs = await Video.insertMany(toInsert);
+    }
+
+    // Set course thumbnail from first imported video if course has no thumbnail
+    if (courseDoc && !courseDoc.thumbnail && insertedDocs.length > 0 && insertedDocs[0].thumbnail) {
+      courseDoc.thumbnail = insertedDocs[0].thumbnail;
+      await courseDoc.save().catch(() => {});
+    }
+
+    res.status(200).json({
+      success: true,
+      totalFetched: videos.length,
+      addedCount: insertedDocs.length,
+      skippedCount: skipped.length,
+      addedVideos: insertedDocs,
+      skippedVideos: skipped,
+      message: `Imported ${insertedDocs.length} video lesson(s). ${skipped.length} duplicate(s) skipped.`
+    });
+  } catch (err) {
+    console.error('[IMPORT PLAYLIST] Error:', err);
+    res.status(500).json({ error: 'Failed to import playlist lessons: ' + err.message });
   }
 });
 
 app.put('/api/videos/:id', authMiddleware, async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid video ID format' });
+    }
+
     // Helper to extract ID
     const extractVideoId = (url) => {
       if (!url) return null;
@@ -1369,6 +1689,9 @@ app.put('/api/videos/:id', authMiddleware, async (req, res) => {
     };
 
     const payload = { ...req.body };
+    delete payload._id;
+    delete payload.id;
+
     if (!payload.youtubeVideoId && payload.link) {
       payload.youtubeVideoId = extractVideoId(payload.link);
     }
@@ -1378,31 +1701,69 @@ app.put('/api/videos/:id', authMiddleware, async (req, res) => {
       payload,
       { new: true }
     );
-    if (!video) return res.status(404).json({ error: 'Video not found' });
+    if (!video) return res.status(404).json({ error: 'Video not found or unauthorized' });
     res.json(video);
   } catch (err) {
+    if (err.name === 'ValidationError' || err.name === 'CastError') {
+      return res.status(400).json({ error: err.message });
+    }
     res.status(500).json({ error: err.message });
   }
 });
 
 app.delete('/api/videos/:id', authMiddleware, async (req, res) => {
   try {
-    const video = await Video.findOne({ _id: req.params.id, userId: req.user.id });
-    if (!video) return res.status(404).json({ error: 'Video not found' });
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid video ID format' });
+    }
 
-    // Soft-delete: hide from user immediately, queue for admin approval
-    await Video.updateOne({ _id: video._id }, { $set: { isPendingDelete: true } });
+    const video = await Video.findOne({
+      _id: req.params.id,
+      ...(req.user.role !== 'admin' ? { userId: req.user.id } : {})
+    });
+    if (!video) return res.status(404).json({ error: 'Video not found or unauthorized' });
 
-    const user = await User.findById(req.user.id).select('name');
-    await DeleteRequest.create({
+    // Persist actual deletion in MongoDB
+    await Video.deleteOne({ _id: video._id });
+
+    // Clean up related references
+    await DeleteRequest.deleteMany({ itemId: String(video._id) });
+    await UserProgress.deleteMany({ userId: req.user.id, videoId: String(video._id) });
+
+    res.status(200).json({
+      success: true,
+      message: 'Video deleted successfully',
+      id: req.params.id
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete an individual item from an imported playlist
+app.delete('/api/playlists/:playlistId/videos/:videoId', authMiddleware, async (req, res) => {
+  try {
+    const { playlistId, videoId } = req.params;
+    const query = mongoose.Types.ObjectId.isValid(playlistId)
+      ? { _id: playlistId }
+      : { playlistId };
+    const playlist = await Playlist.findOne(query);
+    if (!playlist) return res.status(404).json({ error: 'Playlist not found' });
+
+    playlist.videos = playlist.videos.filter(v => v.videoId !== videoId && String(v._id) !== videoId);
+    playlist.videoCount = playlist.videos.length;
+    await playlist.save();
+
+    // Also remove any matching Video documents for this user
+    await Video.deleteMany({
       userId: req.user.id,
-      userName: user?.name || 'Unknown',
-      itemId: String(video._id),
-      itemType: 'video',
-      itemName: video.title,
+      $or: [
+        { youtubeVideoId: videoId },
+        { _id: mongoose.Types.ObjectId.isValid(videoId) ? videoId : null }
+      ]
     });
 
-    res.json({ message: 'Delete request submitted. Awaiting admin approval.' });
+    res.status(200).json({ success: true, message: 'Video removed from playlist', playlist });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2311,6 +2672,9 @@ app.post('/api/admin/courses', authMiddleware, adminMiddleware, async (req, res)
 /** PUT /api/admin/courses/:id — update an existing course */
 app.put('/api/admin/courses/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid course ID format' });
+    }
     const { name, category, subcategory, description, thumbnail } = req.body;
     const course = await Course.findById(req.params.id);
     if (!course) return res.status(404).json({ error: 'Course not found' });
@@ -2345,6 +2709,9 @@ app.put('/api/admin/courses/:id', authMiddleware, adminMiddleware, async (req, r
 /** DELETE /api/admin/courses/:id — delete course and all linked playlists and videos */
 app.delete('/api/admin/courses/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid course ID format' });
+    }
     const course = await Course.findById(req.params.id);
     if (!course) return res.status(404).json({ error: 'Course not found' });
 
@@ -2532,6 +2899,9 @@ app.post('/api/admin/delete-requests/:id/reject', authMiddleware, adminMiddlewar
 /** POST /api/videos/:id/check-completion — auto-mark course complete when all videos done */
 app.post('/api/videos/:id/check-completion', authMiddleware, async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid video ID format' });
+    }
     const video = await Video.findOne({ _id: req.params.id, userId: req.user.id });
     if (!video) return res.status(404).json({ error: 'Video not found' });
 
@@ -3611,12 +3981,20 @@ Rules:
 const PORT = process.env.PORT || 5000;
 
 mongoose.connect(process.env.MONGO_URI, { family: 4 })
-  .then(() => {
+  .then(async () => {
     console.log("✅ MongoDB connected");
-    // Ensure duplicate course titles are permitted (safely drop legacy unique indexes)
-    Course.collection.dropIndex('name_1').catch(() => { });
-    Course.collection.dropIndex('userId_1_name_1').catch(() => { });
-    Course.collection.dropIndex('name_1_userId_1').catch(() => { });
+    // Ensure duplicate course titles are permitted across different users (drop legacy global unique indexes)
+    try {
+      const indexes = await Course.collection.indexes();
+      for (const idx of indexes) {
+        if (idx.unique && idx.key && idx.key.name && !idx.key.userId) {
+          console.log(`[INDEX MIGRATION] Dropping legacy global unique index on Course: ${idx.name}`);
+          await Course.collection.dropIndex(idx.name).catch(() => { });
+        }
+      }
+    } catch (idxErr) {
+      // Ignore if collection is not yet created
+    }
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${PORT} with Socket.IO enabled`);
     });

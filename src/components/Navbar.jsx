@@ -186,15 +186,6 @@ export default function Navbar() {
                             <CheckSquare size={14} className="text-[#EA580C]" /> Study Tasks
                           </Link>
 
-                          {user.features?.canUseCommunity !== false && (
-                            <Link
-                              to="/thoughts"
-                              onClick={() => setShowUserMenu(false)}
-                              className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-[#431407] rounded-xl hover:bg-[#FFF7ED] transition"
-                            >
-                              <Sparkles size={14} className="text-[#EA580C]" /> Community Thoughts
-                            </Link>
-                          )}
 
                           {user.role === 'admin' && (
                             <Link

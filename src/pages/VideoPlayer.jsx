@@ -14,7 +14,8 @@ import {
   FileText, 
   Save, 
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  Trash2
 } from 'lucide-react';
 import { formatDuration } from '../utils/helpers';
 
@@ -261,9 +262,9 @@ export default function VideoPlayer() {
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <Link
-              to="/my-learning"
+              to={`/course/${courseId}`}
               className="p-2 rounded-xl bg-[#FFF7ED] border border-[#FED7AA] text-[#C2410C] hover:bg-[#FED7AA]/50 transition"
-              title="Back to Courses"
+              title="Back to Course"
             >
               <ArrowLeft size={18} />
             </Link>
@@ -360,18 +361,44 @@ export default function VideoPlayer() {
               </button>
             </div>
 
-            <button
-              onClick={handleComplete}
-              disabled={currentVideo?.completed}
-              className={`text-xs px-4 py-2 font-bold rounded-xl flex items-center gap-1.5 transition ${
-                currentVideo?.completed
-                  ? 'bg-green-100 text-green-800 border border-green-300 cursor-default'
-                  : 'clay-btn-primary'
-              }`}
-            >
-              <CheckCircle2 size={16} />
-              {currentVideo?.completed ? 'Video Completed ✓' : 'Mark as Completed'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleComplete}
+                disabled={currentVideo?.completed}
+                className={`text-xs px-4 py-2 font-bold rounded-xl flex items-center gap-1.5 transition ${
+                  currentVideo?.completed
+                    ? 'bg-green-100 text-green-800 border border-green-300 cursor-default'
+                    : 'clay-btn-primary'
+                }`}
+              >
+                <CheckCircle2 size={16} />
+                {currentVideo?.completed ? 'Video Completed ✓' : 'Mark as Completed'}
+              </button>
+
+              <button
+                onClick={async () => {
+                  if (!currentVideo) return;
+                  if (!window.confirm(`Are you sure you want to delete "${currentVideo.title}" from this course? This action cannot be undone.`)) return;
+                  try {
+                    await videoService.delete(currentVideo._id);
+                    const remaining = videos.filter((v) => v._id !== currentVideo._id);
+                    if (remaining.length > 0) {
+                      const next = remaining.find((v) => !v.completed) || remaining[0];
+                      setVideos(remaining);
+                      navigate(`/course/${courseId}/video/${next._id}`, { replace: true });
+                    } else {
+                      navigate(`/course/${courseId}`, { replace: true });
+                    }
+                  } catch (err) {
+                    alert(err.response?.data?.error || 'Failed to delete video');
+                  }
+                }}
+                className="p-2 rounded-xl text-[#78716C] hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition"
+                title="Delete this lesson"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
           </div>
 
           {/* Study Notes Card */}

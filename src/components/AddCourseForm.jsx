@@ -19,9 +19,10 @@ export default function AddCourseForm({
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    const normalized = name.trim().replace(/\s+/g, ' ');
+    if (!normalized) return;
     if (addHandler) {
-      addHandler({ id: Date.now().toString(), name: name.trim() });
+      addHandler({ name: normalized });
     }
     setName('');
     if (onDirtyChange) onDirtyChange(false);

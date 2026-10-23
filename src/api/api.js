@@ -25,11 +25,17 @@ api.interceptors.request.use(
 // Global response error handler (logout on 401)
 api.interceptors.response.use(
   (res) => res,
-  (error) => {
+  async (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem("studymate_token");
       localStorage.removeItem("studymate_user");
-      if (window.location.pathname !== "/login") {
+      try {
+        const { signOutFirebase } = await import("../utils/firebase");
+        await signOutFirebase();
+      } catch {
+        // ignore
+      }
+      if (window.location.pathname !== "/login" && window.location.pathname !== "/signup") {
         window.location.href = "/login";
       }
     }
@@ -63,8 +69,20 @@ export const profileService = {
 export const videoService = {
   getAll: () => api.get("/api/videos").then((r) => r.data),
 
-  create: (videoData) =>
-    api.post("/api/videos", videoData).then((r) => r.data),
+  create: (videoData) => {
+    const payload = { ...videoData };
+    // Never send temporary frontend identifiers or malformed strings as document _id
+    if (payload.id && !payload._id && typeof payload.id === 'string' && (payload.id.startsWith('yt_') || !/^[0-9a-fA-F]{24}$/.test(payload.id))) {
+      delete payload.id;
+    }
+    if (payload._id && typeof payload._id === 'string' && (payload._id.startsWith('yt_') || !/^[0-9a-fA-F]{24}$/.test(payload._id))) {
+      delete payload._id;
+    }
+    return api.post("/api/videos", payload).then((r) => r.data);
+  },
+
+  importPlaylist: (data) =>
+    api.post("/api/videos/import-playlist", data).then((r) => r.data),
 
   update: (id, updates) =>
     api.put(`/api/videos/${id}`, updates).then((r) => r.data),
@@ -102,7 +120,13 @@ export const videoService = {
 export const courseService = {
   getAll: (params) => api.get("/api/courses", { params }).then((r) => r.data),
   getMy: () => api.get("/api/courses/my").then((r) => r.data),
-  create: (courseData) => api.post("/api/courses", typeof courseData === 'string' ? { name: courseData } : courseData).then((r) => r.data),
+  getById: (id) => api.get(`/api/courses/${id}`).then((r) => r.data),
+  create: (courseData) => {
+    const payload = typeof courseData === 'string'
+      ? { name: courseData.trim() }
+      : { ...courseData, name: courseData.name ? courseData.name.trim() : '' };
+    return api.post("/api/courses", payload).then((r) => r.data);
+  },
   delete: (id) => api.delete(`/api/courses/${id}`).then((r) => r.data),
 };
 
@@ -155,15 +179,6 @@ export const bugReportService = {
   submit: (data) => api.post("/api/bug-report", data).then((r) => r.data),
 };
 
-// ── Thought Service ────────────────────
-export const thoughtService = {
-  getThoughts: () => api.get("/api/thoughts").then((r) => r.data),
-  createThought: (content) => api.post("/api/thoughts", { content }).then((r) => r.data),
-  updateThought: (id, content) => api.put(`/api/thoughts/${id}`, { content }).then((r) => r.data),
-  deleteThought: (id) => api.delete(`/api/thoughts/${id}`).then((r) => r.data),
-  likeThought: (id) => api.post(`/api/thoughts/${id}/like`).then((r) => r.data),
-};
-
 // ── Notification Service ─────────────────
 export const notificationService = {
   get: () => api.get("/api/notifications").then((r) => r.data),
@@ -176,6 +191,7 @@ export const playlistService = {
   importPlaylist: (data) => api.post("/api/admin/playlists/import", data).then((r) => r.data),
   refreshPlaylist: (id) => api.post(`/api/admin/playlists/${id}/refresh`).then((r) => r.data),
   deletePlaylist: (id) => api.delete(`/api/admin/playlists/${id}`).then((r) => r.data),
+  deleteItem: (playlistId, videoId) => api.delete(`/api/playlists/${playlistId}/videos/${videoId}`).then((r) => r.data),
   assignUsers: (id, userIds) => api.post(`/api/admin/playlists/${id}/assign`, { userIds }).then((r) => r.data),
 };
 

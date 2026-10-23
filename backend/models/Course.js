@@ -18,4 +18,6 @@ const courseSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+courseSchema.index({ userId: 1, name: 1 });
+
 export default mongoose.model('Course', courseSchema);

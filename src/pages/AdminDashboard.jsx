@@ -35,7 +35,6 @@ const FEATURE_LABELS = {
   canAddCourse: 'Add Course',
   canDeleteCourse: 'Delete Course',
   canUsePomodoro: 'Pomodoro Timer',
-  canUseCommunity: 'Thoughts',
   canUseLeaderboard: 'Leaderboard',
   canReportBug: 'Bug Report',
 };

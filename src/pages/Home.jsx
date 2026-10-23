@@ -76,14 +76,30 @@ export default function Home() {
       setVideos((prev) => [data, ...prev]);
       setShowAddVideo(false);
       setIsVideoDirty(false);
+      return data;
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to add video');
+      if (err.response?.status !== 409) {
+        alert(err.response?.data?.error || 'Failed to add video');
+      }
+      throw err;
     }
   };
 
   const handleAddCourse = async (c) => {
+    const courseTitle = c?.name ? c.name.trim() : '';
+    if (!courseTitle) return;
+
+    // Check existing courses for duplicates
+    const alreadyExists = myCourses.some(
+      (existing) => existing.name.toLowerCase().trim() === courseTitle.toLowerCase()
+    );
+    if (alreadyExists) {
+      alert(`A course named "${courseTitle}" already exists in your account.`);
+      return;
+    }
+
     try {
-      const data = await courseService.create(c.name);
+      const data = await courseService.create(courseTitle);
       setMyCourses((prev) => [...prev, data]);
       setRecommendedCourses((prev) => [...prev, data]);
       setShowAddCourse(false);
@@ -568,9 +584,11 @@ export default function Home() {
                       </span>
                     </div>
 
-                    <h3 className="text-sm font-black text-[#431407] line-clamp-1" title={c.name}>
-                      {c.name}
-                    </h3>
+                    <Link to={`/course/${c._id}`} className="block hover:text-[#EA580C] transition">
+                      <h3 className="text-sm font-black text-[#431407] hover:text-[#EA580C] line-clamp-1 transition" title={c.name}>
+                        {c.name}
+                      </h3>
+                    </Link>
 
                     {/* Progress Bar */}
                     <div className="w-full bg-[#FFF7ED] h-2 rounded-full overflow-hidden border border-[#FED7AA] mt-2 mb-1.5">
@@ -592,7 +610,7 @@ export default function Home() {
                         : 'In progress'}
                     </span>
                     <Link
-                      to="/my-learning"
+                      to={`/course/${c._id}`}
                       className="text-xs font-black text-[#EA580C] hover:underline flex items-center gap-1"
                     >
                       Continue <ArrowRight size={12} />
@@ -762,6 +780,7 @@ export default function Home() {
         <PlaylistImport
           courses={myCourses.length > 0 ? myCourses : recommendedCourses}
           onAddVideo={handleAddVideo}
+          onSuccess={() => fetchDashboardData()}
           onClose={() => {
             setShowPlaylistImport(false);
             setIsPlaylistDirty(false);

@@ -49,23 +49,24 @@ export default function AddVideoForm({
       return;
     }
 
+    const trimmedLink = formData.link.trim();
+    const platform = detectPlatform(trimmedLink);
+    const ytId = platform === 'YouTube' ? extractVideoId(trimmedLink) : '';
+
     if (addHandler) {
       addHandler({
-        id: Date.now().toString(),
         title: formData.title.trim(),
-        link: formData.link.trim(),
-        platform: detectPlatform(formData.link.trim()),
+        link: trimmedLink,
+        youtubeVideoId: ytId || '',
+        platform: platform,
         duration: totalSeconds,
         course: formData.course,
         tag: formData.tag.trim(),
         completed: false,
-        createdAt: new Date().toISOString(),
-        completedAt: null,
         notes: '',
-        order: Date.now(),
         thumbnail:
-          detectPlatform(formData.link.trim()) === 'YouTube'
-            ? `https://i.ytimg.com/vi/${extractVideoId(formData.link.trim())}/mqdefault.jpg`
+          platform === 'YouTube' && ytId
+            ? `https://i.ytimg.com/vi/${ytId}/mqdefault.jpg`
             : null,
       });
     }

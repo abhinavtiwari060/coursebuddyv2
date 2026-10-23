@@ -70,17 +70,29 @@ async function fetchPlaylistVideosWithTime(playlistId) {
   });
 }
 
+import { videoService } from '../api/api';
+
 // ── component ─────────────────────────────────────────────────────────────────
-export default function PlaylistImport({ courses = [], onAddVideo, onAdd, onClose, onDirtyChange }) {
+export default function PlaylistImport({ courses = [], onAddVideo, onAdd, onClose, onDirtyChange, onSuccess }) {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [videos, setVideos] = useState([]);
   const [course, setCourse] = useState('');
   const [importing, setImporting] = useState(new Set());
   const [imported, setImported] = useState(new Set());
+  const [skipped, setSkipped] = useState(new Set());
+  const [importingAll, setImportingAll] = useState(false);
 
   const addHandler = onAddVideo || onAdd;
+
+  // Automatically select first course if available
+  useEffect(() => {
+    if (!course && courses.length > 0) {
+      setCourse(courses[0].name || courses[0]._id);
+    }
+  }, [courses, course]);
 
   // Track dirty state
   useEffect(() => {
@@ -91,8 +103,10 @@ export default function PlaylistImport({ courses = [], onAddVideo, onAdd, onClos
 
   const handleFetch = async () => {
     setError('');
+    setSuccessMessage('');
     setVideos([]);
     setImported(new Set());
+    setSkipped(new Set());
     const playlistId = extractPlaylistId(url);
     if (!playlistId) { setError('Could not find a playlist ID in that URL. Make sure it contains ?list=...'); return; }
     setLoading(true);
@@ -106,42 +120,89 @@ export default function PlaylistImport({ courses = [], onAddVideo, onAdd, onClos
     }
   };
 
-  const importAll = () => {
+  const importAll = async () => {
     if (!course) { setError('Please select a course before importing.'); return; }
-    const now = Date.now();
-    videos.forEach((v, idx) => {
-      importVideo(v, now + idx);
-    });
-  };
+    setError('');
+    setSuccessMessage('');
+    setImportingAll(true);
 
-  const importVideo = (vid, customOrder = null) => {
-    if (!course) { setError('Please select a course before importing.'); return; }
-    if (imported.has(vid.videoId)) return;
-    setImporting(prev => new Set([...prev, vid.videoId]));
-    setTimeout(() => {
-      if (addHandler) {
-        addHandler({
-          id: `yt_${vid.videoId}_${Date.now()}`,
-          title: vid.title,
-          link: vid.link,
-          platform: 'YouTube',
-          duration: vid.duration,
-          course,
-          tag: 'playlist',
-          completed: false,
-          createdAt: new Date().toISOString(),
-          completedAt: null,
-          notes: '',
-          order: customOrder || Date.now(),
-          thumbnail: vid.thumbnail,
-        });
+    try {
+      const selectedCourseObj = courses.find(c => c.name === course || c._id === course);
+      const res = await videoService.importPlaylist({
+        courseId: selectedCourseObj?._id,
+        courseName: selectedCourseObj?.name || course,
+        playlistId: extractPlaylistId(url) || '',
+        videos: videos.map((v, idx) => ({
+          title: v.title,
+          link: v.link,
+          youtubeVideoId: v.videoId,
+          duration: v.duration,
+          thumbnail: v.thumbnail,
+          position: idx
+        }))
+      });
+
+      const newlyAddedYtIds = (res.addedVideos || []).map(v => v.youtubeVideoId).filter(Boolean);
+      const skippedYtIds = (res.skippedVideos || []).map(v => v.youtubeVideoId).filter(Boolean);
+
+      setImported(prev => new Set([...prev, ...newlyAddedYtIds]));
+      setSkipped(prev => new Set([...prev, ...skippedYtIds]));
+
+      setSuccessMessage(res.message || `Successfully imported ${res.addedCount} lessons. ${res.skippedCount} duplicate(s) skipped.`);
+
+      if (onSuccess) {
+        onSuccess(res);
       }
-      setImporting(prev => { const s = new Set(prev); s.delete(vid.videoId); return s; });
-      setImported(prev => new Set([...prev, vid.videoId]));
-    }, 300);
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Failed to import playlist lessons');
+    } finally {
+      setImportingAll(false);
+    }
   };
 
-  const notImported = videos.filter(v => !imported.has(v.videoId));
+  const importVideo = async (vid, customOrder = null) => {
+    if (!course) { setError('Please select a course before importing.'); return; }
+    if (imported.has(vid.videoId) || skipped.has(vid.videoId)) return;
+    setError('');
+    setImporting(prev => new Set([...prev, vid.videoId]));
+
+    const selectedCourseObj = courses.find(c => c.name === course || c._id === course);
+
+    const payload = {
+      title: vid.title,
+      link: vid.link,
+      youtubeVideoId: vid.videoId,
+      platform: 'YouTube',
+      duration: vid.duration,
+      course: selectedCourseObj?.name || course,
+      courseId: selectedCourseObj?._id,
+      tag: 'playlist',
+      completed: false,
+      notes: '',
+      thumbnail: vid.thumbnail,
+      order: customOrder || Date.now()
+    };
+
+    try {
+      if (addHandler) {
+        await addHandler(payload);
+      } else {
+        await videoService.create(payload);
+      }
+      setImported(prev => new Set([...prev, vid.videoId]));
+    } catch (err) {
+      if (err.response?.status === 409 || err.response?.data?.duplicate) {
+        // Genuine duplicate in this course
+        setSkipped(prev => new Set([...prev, vid.videoId]));
+      } else {
+        setError(err.response?.data?.error || err.message || 'Failed to add lesson');
+      }
+    } finally {
+      setImporting(prev => { const s = new Set(prev); s.delete(vid.videoId); return s; });
+    }
+  };
+
+  const notImported = videos.filter(v => !imported.has(v.videoId) && !skipped.has(v.videoId));
 
   return (
     <div className="space-y-4">
@@ -155,7 +216,7 @@ export default function PlaylistImport({ courses = [], onAddVideo, onAdd, onClos
           type="url"
           placeholder="https://youtube.com/playlist?list=PL..."
           value={url}
-          onChange={e => { setUrl(e.target.value); setError(''); }}
+          onChange={e => { setUrl(e.target.value); setError(''); setSuccessMessage(''); }}
           className="flex-1 bg-[#FFF7ED] border border-[#FED7AA] rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#EA580C] text-[#431407] text-xs sm:text-sm"
         />
         <button
@@ -169,11 +230,19 @@ export default function PlaylistImport({ courses = [], onAddVideo, onAdd, onClos
         </button>
       </div>
 
-      {/* Error */}
+      {/* Error Message */}
       {error && (
         <div className="flex items-start gap-2 text-red-700 bg-red-50 rounded-xl p-3 text-xs border border-red-200">
           <AlertCircle size={15} className="mt-0.5 flex-shrink-0" />
           <span>{error}</span>
+        </div>
+      )}
+
+      {/* Success Message */}
+      {successMessage && (
+        <div className="flex items-start gap-2 text-green-800 bg-green-50 rounded-xl p-3 text-xs border border-green-200">
+          <CheckCircle2 size={15} className="mt-0.5 flex-shrink-0 text-green-600" />
+          <span className="font-bold">{successMessage}</span>
         </div>
       )}
 
@@ -185,6 +254,9 @@ export default function PlaylistImport({ courses = [], onAddVideo, onAdd, onClos
               {videos.length} videos found
               {imported.size > 0 && (
                 <span className="ml-2 text-green-700 font-bold">· {imported.size} imported</span>
+              )}
+              {skipped.size > 0 && (
+                <span className="ml-2 text-amber-700 font-bold">· {skipped.size} skipped duplicates</span>
               )}
             </span>
 
@@ -206,9 +278,11 @@ export default function PlaylistImport({ courses = [], onAddVideo, onAdd, onClos
                 <button
                   type="button"
                   onClick={importAll}
-                  className="clay-btn-primary text-xs px-3.5 py-1.5 flex items-center gap-1.5"
+                  disabled={importingAll}
+                  className="clay-btn-primary text-xs px-3.5 py-1.5 flex items-center gap-1.5 disabled:opacity-50"
                 >
-                  <Download size={13} /> Import All ({notImported.length})
+                  {importingAll ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                  {importingAll ? 'Importing…' : `Import All (${notImported.length})`}
                 </button>
               )}
             </div>
@@ -218,6 +292,7 @@ export default function PlaylistImport({ courses = [], onAddVideo, onAdd, onClos
           <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
             {videos.map((vid) => {
               const done = imported.has(vid.videoId);
+              const isSkipped = skipped.has(vid.videoId);
               const busy = importing.has(vid.videoId);
               return (
                 <div
@@ -225,6 +300,8 @@ export default function PlaylistImport({ courses = [], onAddVideo, onAdd, onClos
                   className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all ${
                     done
                       ? 'border-green-200 bg-green-50/60'
+                      : isSkipped
+                      ? 'border-amber-200 bg-amber-50/60'
                       : 'border-[#FED7AA]/60 bg-[#FFF7ED]/50 hover:bg-[#FFF7ED]'
                   }`}
                 >
@@ -249,7 +326,7 @@ export default function PlaylistImport({ courses = [], onAddVideo, onAdd, onClos
                   <div className="flex-1 min-w-0">
                     <p
                       className={`text-xs font-bold line-clamp-2 leading-tight ${
-                        done ? 'text-[#78716C] line-through' : 'text-[#431407]'
+                        done ? 'text-green-800' : isSkipped ? 'text-amber-800' : 'text-[#431407]'
                       }`}
                     >
                       {vid.title}
@@ -262,11 +339,15 @@ export default function PlaylistImport({ courses = [], onAddVideo, onAdd, onClos
                       <span className="flex items-center gap-1 px-2.5 py-1 text-green-700 text-[10px] font-black uppercase bg-green-100 rounded-lg">
                         <CheckCircle2 size={13} /> Added
                       </span>
+                    ) : isSkipped ? (
+                      <span className="flex items-center gap-1 px-2.5 py-1 text-amber-700 text-[10px] font-black uppercase bg-amber-100 rounded-lg">
+                        <CheckCircle2 size={13} /> In Course
+                      </span>
                     ) : (
                       <button
                         type="button"
                         onClick={() => importVideo(vid)}
-                        disabled={busy}
+                        disabled={busy || importingAll}
                         className="clay-btn-secondary text-[11px] px-3 py-1 flex items-center gap-1 disabled:opacity-50"
                       >
                         {busy ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
