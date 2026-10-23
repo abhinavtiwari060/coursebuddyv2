@@ -6,7 +6,6 @@ import {
   ChevronLeft, 
   ChevronRight, 
   CheckCircle2, 
-  PlayCircle, 
   List, 
   X, 
   BookOpen, 
@@ -24,22 +23,37 @@ import { formatDuration } from '../utils/helpers';
 // Helper to reliably extract the 11-character YouTube video ID
 function extractYouTubeId(video) {
   if (!video) return null;
-  const candidates = [video.youtubeVideoId, video.link];
-  for (const str of candidates) {
-    if (!str || typeof str !== 'string') continue;
-    const s = str.trim();
+  const candidates = [
+    video.youtubeVideoId,
+    video.youtubeId,
+    video.videoId,
+    video.id,
+    video.link,
+    video.url,
+    video.videoUrl
+  ];
+
+  for (const raw of candidates) {
+    if (!raw || typeof raw !== 'string') continue;
+    const s = raw.trim();
+    if (!s) continue;
+
     // 1. If starts with temporary frontend prefix yt_
     if (s.startsWith('yt_')) {
       const extracted = s.slice(3, 14);
       if (/^[a-zA-Z0-9_-]{11}$/.test(extracted)) return extracted;
     }
+
     // 2. Exact 11-character YouTube video ID
     if (/^[a-zA-Z0-9_-]{11}$/.test(s)) {
       return s;
     }
-    // 3. YouTube URL formats (watch?v=, youtu.be/, /embed/, /shorts/, /v/)
-    const urlMatch = s.match(/(?:v=|youtu\.be\/|embed\/|shorts\/|\/v\/)([a-zA-Z0-9_-]{11})/);
-    if (urlMatch) return urlMatch[1];
+
+    // 3. YouTube URL formats (watch?v=, youtu.be/, /embed/, /shorts/, /live/, /v/, /e/, vi=)
+    const urlMatch = s.match(/(?:v=|youtu\.be\/|embed\/|shorts\/|live\/|\/v\/|\/e\/|vi=)([a-zA-Z0-9_-]{11})/i);
+    if (urlMatch && urlMatch[1]) {
+      return urlMatch[1];
+    }
   }
   return null;
 }
@@ -53,6 +67,8 @@ export default function VideoPlayer() {
   const [currentVideo, setCurrentVideo] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [iframeLoading, setIframeLoading] = useState(true);
+  const [ytError, setYtError] = useState(null);
   const [notes, setNotes] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
   const [savedNotesFeedback, setSavedNotesFeedback] = useState(false);
@@ -64,7 +80,6 @@ export default function VideoPlayer() {
   const timerRef = useRef(null);
   const unsentSecondsRef = useRef(0);
   const currentVideoRef = useRef(null);
-  const playerRef = useRef(null);
   const iframeRef = useRef(null);
 
   // Sync current video to ref and notes
@@ -73,8 +88,6 @@ export default function VideoPlayer() {
     if (currentVideo) {
       setNotes(currentVideo.notes || '');
     }
-    // Video switched: pause timer until playback resumes
-    setIsPlaying(false);
   }, [currentVideo]);
 
   // Load course details and its videos from the backend
@@ -125,7 +138,12 @@ export default function VideoPlayer() {
           // Identify active video
           let active = null;
           if (videoId) {
-            active = sorted.find((v) => String(v._id) === String(videoId) || v.youtubeVideoId === videoId);
+            active = sorted.find(
+              (v) =>
+                String(v._id) === String(videoId) ||
+                v.youtubeVideoId === videoId ||
+                (v.link && v.link.includes(videoId))
+            );
           }
 
           if (!active) {
@@ -144,6 +162,9 @@ export default function VideoPlayer() {
           }
 
           setCurrentVideo(active);
+          setIsPlaying(false);
+          setYtError(null);
+          setIframeLoading(true);
 
           // Update URL if no videoId was provided in route
           if (!videoId && active && resolvedCourse) {
@@ -166,26 +187,7 @@ export default function VideoPlayer() {
     return () => {
       cancelled = true;
     };
-  }, [courseId]);
-
-  // Sync active video when videoId route param changes and videos are already loaded
-  useEffect(() => {
-    if (videoId && videos.length > 0) {
-      const matched = videos.find((v) => String(v._id) === String(videoId) || v.youtubeVideoId === videoId);
-      if (matched) {
-        if (String(matched._id) !== String(currentVideo?._id)) {
-          setCurrentVideo(matched);
-          setActiveWatchSec(0);
-        }
-      } else {
-        // Safe fallback if videoId in URL was not found in curriculum
-        const fallback = videos.find((v) => !v.completed) || videos[0];
-        if (fallback) {
-          navigate(`/course/${course?._id || courseId}/video/${fallback._id}`, { replace: true });
-        }
-      }
-    }
-  }, [videoId, videos, course?._id, courseId, currentVideo?._id, navigate]);
+  }, [courseId, navigate, videoId]);
 
   // Flush accumulated watch time to backend
   const flushWatchHeartbeat = useCallback(async () => {
@@ -208,93 +210,81 @@ export default function VideoPlayer() {
     }
   }, [courseId, course?._id, activeWatchSec]);
 
-  // Initialize YouTube Iframe API player wrapper
-  const initYTPlayer = useCallback(() => {
-    if (typeof window === 'undefined' || !window.YT || !window.YT.Player || !iframeRef.current) return;
-
-    try {
-      if (playerRef.current && typeof playerRef.current.destroy === 'function') {
-        try {
-          playerRef.current.destroy();
-        } catch { /* ignore */ }
-        playerRef.current = null;
-      }
-
-      playerRef.current = new window.YT.Player(iframeRef.current, {
-        events: {
-          onStateChange: (event) => {
-            // window.YT.PlayerState: PLAYING = 1, PAUSED = 2, ENDED = 0
-            if (event.data === 1) {
-              setIsPlaying(true);
-            } else if (event.data === 2 || event.data === 0) {
-              setIsPlaying(false);
-            }
-          },
-        },
-      });
-    } catch (err) {
-      console.warn('[YTPlayer] Iframe binding note:', err?.message || err);
-    }
-  }, []);
-
-  // Dynamically load YouTube IFrame API script and bind to ready event
+  // Sync active video when videoId route param changes and videos are already loaded
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    if (!window.YT) {
-      const existing = document.getElementById('youtube-iframe-api');
-      if (!existing) {
-        const tag = document.createElement('script');
-        tag.id = 'youtube-iframe-api';
-        tag.src = 'https://www.youtube.com/iframe_api';
-        document.head.appendChild(tag);
+    if (videoId && videos.length > 0) {
+      const matched = videos.find(
+        (v) =>
+          String(v._id) === String(videoId) ||
+          v.youtubeVideoId === videoId ||
+          (v.link && v.link.includes(videoId))
+      );
+      if (matched) {
+        if (String(matched._id) !== String(currentVideo?._id)) {
+          flushWatchHeartbeat();
+          setIsPlaying(false);
+          setActiveWatchSec(0);
+          setYtError(null);
+          setIframeLoading(true);
+          setCurrentVideo(matched);
+        }
+      } else {
+        // Safe fallback if videoId in URL was not found in curriculum
+        const fallback = videos.find((v) => !v.completed) || videos[0];
+        if (fallback) {
+          navigate(`/course/${course?._id || courseId}/video/${fallback._id}`, { replace: true });
+        }
       }
     }
+  }, [videoId, videos, course?._id, courseId, currentVideo?._id, navigate, flushWatchHeartbeat]);
 
-    const prevReady = window.onYouTubeIframeAPIReady;
-    window.onYouTubeIframeAPIReady = () => {
-      if (typeof prevReady === 'function') prevReady();
-      initYTPlayer();
-    };
-
-    if (window.YT && window.YT.Player) {
-      initYTPlayer();
-    }
-
-    return () => {
-      if (playerRef.current && typeof playerRef.current.destroy === 'function') {
-        try {
-          playerRef.current.destroy();
-        } catch { /* ignore */ }
-        playerRef.current = null;
-      }
-    };
-  }, [currentVideo?._id, initYTPlayer]);
-
-  // Synchronize via YouTube iframe postMessage events for instant reactivity
+  // Synchronize via YouTube iframe postMessage events for instant, DOM-safe reactivity
   useEffect(() => {
     const handleWindowMessage = (event) => {
-      if (!event.origin || (!event.origin.includes('youtube.com') && !event.origin.includes('youtube-nocookie.com'))) {
+      // Validate origin to ensure message is from YouTube
+      if (
+        !event.origin ||
+        (!event.origin.includes('youtube.com') && !event.origin.includes('youtube-nocookie.com'))
+      ) {
         return;
       }
 
       try {
         const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-        if (!data) return;
+        if (!data || typeof data !== 'object') return;
 
-        // 1. YouTube onStateChange event
-        if (data.event === 'onStateChange') {
-          if (data.info === 1) {
-            setIsPlaying(true);
-          } else if (data.info === 2 || data.info === 0) {
-            setIsPlaying(false);
-          }
+        // Restriction or error event from YouTube embed
+        if (data.event === 'onError') {
+          setYtError(data.info || 'Restricted');
+          setIsPlaying(false);
+          return;
         }
-        // 2. YouTube infoDelivery event with playerState
-        else if (data.event === 'infoDelivery' && data.info) {
-          if (data.info.playerState === 1) {
+        if (data.event === 'infoDelivery' && data.info && typeof data.info.errorCode !== 'undefined') {
+          setYtError(data.info.errorCode);
+          setIsPlaying(false);
+          return;
+        }
+
+        let state = null;
+        // 1. Direct onStateChange event
+        if (data.event === 'onStateChange') {
+          state = data.info;
+        }
+        // 2. infoDelivery event with playerState
+        else if (data.event === 'infoDelivery' && data.info && typeof data.info.playerState !== 'undefined') {
+          state = data.info.playerState;
+        }
+
+        if (state !== null) {
+          // YouTube Player States:
+          // 1: PLAYING
+          // 2: PAUSED
+          // 0: ENDED
+          if (state === 1) {
             setIsPlaying(true);
-          } else if (data.info.playerState === 2 || data.info.playerState === 0) {
+            setYtError(null);
+            setIframeLoading(false);
+          } else if (state === 2 || state === 0) {
             setIsPlaying(false);
           }
         }
@@ -345,7 +335,17 @@ export default function VideoPlayer() {
       }
       flushWatchHeartbeat();
     };
-  }, [isPlaying, currentVideo?._id, flushWatchHeartbeat]);
+  }, [isPlaying, currentVideo, flushWatchHeartbeat]);
+
+  const handleIframeLoad = () => {
+    setIframeLoading(false);
+    // Ping YouTube iframe so it begins dispatching state change messages to parent window
+    if (iframeRef.current && iframeRef.current.contentWindow) {
+      try {
+        iframeRef.current.contentWindow.postMessage(JSON.stringify({ event: 'listening' }), '*');
+      } catch { /* ignore */ }
+    }
+  };
 
   const handleComplete = async () => {
     if (!currentVideo) return;
@@ -384,9 +384,23 @@ export default function VideoPlayer() {
     }
   };
 
-  const currentIndex = videos.findIndex((v) => String(v._id) === String(currentVideo?._id));
+  const currentIndex = videos.findIndex(
+    (v) =>
+      String(v._id) === String(currentVideo?._id) ||
+      (v.youtubeVideoId && currentVideo?.youtubeVideoId && v.youtubeVideoId === currentVideo.youtubeVideoId)
+  );
   const prevVideo = currentIndex > 0 ? videos[currentIndex - 1] : null;
   const nextVideo = currentIndex >= 0 && currentIndex < videos.length - 1 ? videos[currentIndex + 1] : null;
+
+  const handleNavigateVideo = (targetVideo) => {
+    if (!targetVideo || targetVideo._id === currentVideo?._id) return;
+    flushWatchHeartbeat();
+    setIsPlaying(false);
+    setActiveWatchSec(0);
+    setYtError(null);
+    setIframeLoading(true);
+    navigate(`/course/${course?._id || courseId}/video/${targetVideo._id}`);
+  };
 
   const completedCount = videos.filter((v) => v.completed).length;
   const progressPercent = videos.length > 0 ? Math.round((completedCount / videos.length) * 100) : 0;
@@ -396,6 +410,11 @@ export default function VideoPlayer() {
     currentVideo?.link &&
     /\.(mp4|webm|ogg|m4v)(\?.*)?$/i.test(currentVideo.link)
   );
+
+  const embedOrigin =
+    typeof window !== 'undefined' && window.location.origin && window.location.origin.startsWith('http')
+      ? window.location.origin
+      : '';
 
   if (loading) {
     return (
@@ -527,20 +546,45 @@ export default function VideoPlayer() {
           <div className="w-full aspect-video clay-card overflow-hidden bg-black relative flex items-center justify-center rounded-2xl shadow-md border border-[#FED7AA]">
             {activeYtId ? (
               <>
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-white/50 pointer-events-none z-0">
-                  <Loader2 size={32} className="animate-spin text-[#EA580C] mb-2" />
-                  <span className="text-xs font-semibold">Loading video player...</span>
-                </div>
+                {iframeLoading && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 z-20 text-white pointer-events-none">
+                    <Loader2 size={36} className="animate-spin text-[#EA580C] mb-2" />
+                    <span className="text-xs font-semibold text-[#FED7AA]">Loading video lesson...</span>
+                  </div>
+                )}
+
+                {ytError && (
+                  <div className="absolute inset-0 z-30 bg-black/90 flex flex-col items-center justify-center p-6 text-center text-white">
+                    <AlertCircle size={44} className="text-amber-400 mb-3" />
+                    <h3 className="font-bold text-base text-white">Video Playback Restricted</h3>
+                    <p className="text-xs text-white/70 max-w-md mt-1 leading-relaxed">
+                      {ytError === 150 || ytError === 101
+                        ? 'The creator has restricted this video from playing on external embedded players.'
+                        : ytError === 100
+                        ? 'This video has been removed or marked private on YouTube.'
+                        : 'Playback is restricted or unavailable in the embedded player.'}
+                    </p>
+                    <a
+                      href={`https://www.youtube.com/watch?v=${activeYtId}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-2 mt-4 px-5 py-2.5 rounded-xl bg-[#EA580C] hover:bg-[#C2410C] text-white text-xs font-bold transition shadow-md"
+                    >
+                      Watch on YouTube <ExternalLink size={14} />
+                    </a>
+                  </div>
+                )}
+
+                {/* Pure Declarative Iframe: React retains 100% exclusive DOM ownership */}
                 <iframe
                   ref={iframeRef}
                   id="studymate-yt-iframe"
-                  key={activeYtId}
-                  src={`https://www.youtube.com/embed/${activeYtId}?autoplay=1&enablejsapi=1&origin=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin : '')}&rel=0&modestbranding=1`}
+                  src={`https://www.youtube.com/embed/${activeYtId}?autoplay=1&enablejsapi=1${embedOrigin ? `&origin=${embedOrigin}` : ''}&rel=0&modestbranding=1&playsinline=1`}
                   title={currentVideo?.title || 'YouTube Video Player'}
                   className="w-full h-full border-0 relative z-10"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                   allowFullScreen
-                  onLoad={initYTPlayer}
+                  onLoad={handleIframeLoad}
                 />
               </>
             ) : isDirectVideoLink ? (
@@ -578,11 +622,7 @@ export default function VideoPlayer() {
           <div className="clay-card bg-white p-4 mt-4 rounded-2xl border border-[#FED7AA] flex flex-wrap items-center justify-between gap-3 shadow-sm">
             <div className="flex items-center gap-2">
               <button
-                onClick={() => {
-                  if (prevVideo) {
-                    navigate(`/course/${course?._id || courseId}/video/${prevVideo._id}`);
-                  }
-                }}
+                onClick={() => handleNavigateVideo(prevVideo)}
                 disabled={!prevVideo}
                 className="clay-btn-secondary text-xs px-3.5 py-2 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 font-bold"
                 title={prevVideo ? `Previous: ${prevVideo.title}` : 'No previous video'}
@@ -591,11 +631,7 @@ export default function VideoPlayer() {
               </button>
 
               <button
-                onClick={() => {
-                  if (nextVideo) {
-                    navigate(`/course/${course?._id || courseId}/video/${nextVideo._id}`);
-                  }
-                }}
+                onClick={() => handleNavigateVideo(nextVideo)}
                 disabled={!nextVideo}
                 className="clay-btn-secondary text-xs px-3.5 py-2 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 font-bold"
                 title={nextVideo ? `Next: ${nextVideo.title}` : 'No next video'}
@@ -718,7 +754,7 @@ export default function VideoPlayer() {
                 return (
                   <button
                     key={vid._id}
-                    onClick={() => navigate(`/course/${course?._id || courseId}/video/${vid._id}`)}
+                    onClick={() => handleNavigateVideo(vid)}
                     className={`w-full text-left p-3 rounded-xl transition flex items-start gap-2.5 ${
                       isActive
                         ? 'bg-[#FFF7ED] border border-[#FED7AA] shadow-sm'

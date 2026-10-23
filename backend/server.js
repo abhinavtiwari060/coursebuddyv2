@@ -1315,15 +1315,39 @@ app.get('/api/courses/:id', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Course not found' });
     }
 
-    // Load videos associated with this course and user
-    const videos = await Video.find({
-      userId: req.user.id,
-      $or: [
-        { course: course.name },
-        { course: String(course._id) }
-      ],
-      isPendingDelete: { $ne: true }
+    // Load videos associated with this course (current user's or course creator's)
+    const userConditions = [{ userId: req.user.id }];
+    if (course.userId && course.userId.toString() !== req.user.id) {
+      userConditions.push({ userId: course.userId });
+    }
+
+    const rawVideos = await Video.find({
+      $and: [
+        { $or: userConditions },
+        {
+          $or: [
+            { course: course.name },
+            { course: String(course._id) },
+            { course: course._id },
+            { courseId: course._id },
+            { courseId: String(course._id) }
+          ]
+        },
+        { isPendingDelete: { $ne: true } }
+      ]
     }).sort({ order: 1, position: 1, createdAt: 1 }).lean();
+
+    // Check user's personal progress for completion status
+    let watchedVideoIds = new Set();
+    const progressDoc = await UserProgress.findOne({ userId: req.user.id, courseId: course._id }).lean();
+    if (progressDoc && Array.isArray(progressDoc.watchedVideos)) {
+      progressDoc.watchedVideos.forEach(id => watchedVideoIds.add(String(id)));
+    }
+
+    const videos = rawVideos.map(v => ({
+      ...v,
+      completed: Boolean(v.completed || watchedVideoIds.has(String(v._id)))
+    }));
 
     // Load linked playlists
     const playlists = await Playlist.find({
