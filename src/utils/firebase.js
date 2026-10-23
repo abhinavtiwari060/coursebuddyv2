@@ -72,11 +72,34 @@ const checkMessagingSupport = () => {
   return messagingSupportedPromise;
 };
 
+/**
+ * Safely resolves IndexedDB version conflicts for FCM messaging databases.
+ * Only targets 'firebase-messaging-database' and 'fcm_token_details_db'.
+ * NEVER touches 'firebaseLocalStorageDb' or any authentication/user storage.
+ */
+const reconcileMessagingDbVersion = async () => {
+  if (typeof window === "undefined" || !window.indexedDB) return;
+  if (typeof window.indexedDB.databases === "function") {
+    try {
+      const dbs = await window.indexedDB.databases();
+      for (const db of dbs) {
+        if ((db.name === "firebase-messaging-database" || db.name === "fcm_token_details_db") && db.version > 1) {
+          console.warn(`[Firebase] Resolving messaging IndexedDB version mismatch: removing outdated ${db.name} (v${db.version} > 1).`);
+          window.indexedDB.deleteDatabase(db.name);
+        }
+      }
+    } catch {
+      // Non-blocking
+    }
+  }
+};
+
 const initMessaging = async () => {
   if (messagingInstance) return messagingInstance;
   try {
     const supported = await checkMessagingSupport();
     if (!supported) return null;
+    await reconcileMessagingDbVersion();
     messagingInstance = getMessaging(app);
     return messagingInstance;
   } catch (err) {
@@ -146,7 +169,19 @@ export const requestForToken = async () => {
     const currentToken = await getToken(msg, tokenOptions);
     return currentToken || null;
   } catch (err) {
-    console.warn("[Firebase] Push notification setup handled gracefully:", err?.message || err);
+    const msgText = err?.message || String(err);
+    if (msgText.includes("VersionError") || msgText.includes("less than the existing version")) {
+      console.warn("[Firebase] Handled IndexedDB version mismatch on messaging database. Resetting outdated messaging DB:", msgText);
+      if (typeof window !== "undefined" && window.indexedDB) {
+        try {
+          window.indexedDB.deleteDatabase("firebase-messaging-database");
+          window.indexedDB.deleteDatabase("fcm_token_details_db");
+        } catch {
+          // Gracefully continue
+        }
+      }
+    }
+    console.warn("[Firebase] Push notification setup handled gracefully:", msgText);
     return null;
   }
 };

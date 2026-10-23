@@ -9,6 +9,17 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+// Safely resolve any legacy IndexedDB version mismatch in service worker scope
+if (typeof self !== 'undefined' && self.indexedDB && typeof self.indexedDB.databases === 'function') {
+  self.indexedDB.databases().then((dbs) => {
+    for (const db of dbs) {
+      if ((db.name === 'firebase-messaging-database' || db.name === 'fcm_token_details_db') && db.version > 1) {
+        self.indexedDB.deleteDatabase(db.name);
+      }
+    }
+  }).catch(() => {});
+}
+
 try {
   if (!firebase.apps.length) {
     firebase.initializeApp({

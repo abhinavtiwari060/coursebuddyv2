@@ -62,12 +62,22 @@ export default function Home() {
   const [myLeaderboardRank, setMyLeaderboardRank] = useState(null);
 
   // Modals state
+  const [showCategoryOnboarding, setShowCategoryOnboarding] = useState(!user?.category);
   const [showAddVideo, setShowAddVideo] = useState(false);
   const [showAddCourse, setShowAddCourse] = useState(false);
   const [showPlaylistImport, setShowPlaylistImport] = useState(false);
   const [isVideoDirty, setIsVideoDirty] = useState(false);
   const [isCourseDirty, setIsCourseDirty] = useState(false);
   const [isPlaylistDirty, setIsPlaylistDirty] = useState(false);
+
+  // Sync category onboarding modal visibility when student profile loads or changes
+  useEffect(() => {
+    if (user?.category) {
+      setShowCategoryOnboarding(false);
+    } else if (user && !user.category) {
+      setShowCategoryOnboarding(true);
+    }
+  }, [user?.category, user]);
 
   // Modal action handlers
   const handleAddVideo = async (v) => {
