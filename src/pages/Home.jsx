@@ -170,6 +170,15 @@ export default function Home() {
       ) || videos.find((v) => !v.completed) || videos[0]
     : videos.find((v) => !v.completed) || videos[0];
 
+  const continueCourse = continueVideo
+    ? myCourses.find(
+        (c) =>
+          String(c._id) === String(continueVideo.courseId) ||
+          c.name === continueVideo.course ||
+          String(c._id) === String(continueVideo.course)
+      )
+    : null;
+
   const totalVideos = videos.length;
   const completedVideos = videos.filter((v) => v.completed).length;
 
@@ -258,7 +267,7 @@ export default function Home() {
         <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {continueVideo ? (
             <Link
-              to={`/course/${continueVideo.courseId || continueVideo.course}/video/${continueVideo._id}`}
+              to={`/course/${continueCourse?._id || continueVideo.courseId || continueVideo.course}/video/${continueVideo._id}`}
               className="clay-card bg-white border border-[#FED7AA] hover:border-[#EA580C] p-3.5 rounded-2xl flex items-center gap-3 transition shadow-sm group"
             >
               <div className="w-9 h-9 rounded-xl bg-[#EA580C] text-white flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
@@ -496,7 +505,7 @@ export default function Home() {
               </div>
 
               <Link
-                to={`/course/${continueVideo.courseId || continueVideo.course}/video/${continueVideo._id}`}
+                to={`/course/${continueCourse?._id || continueVideo.courseId || continueVideo.course}/video/${continueVideo._id}`}
                 className="clay-btn-primary self-start md:self-center text-xs px-5 py-2.5 flex items-center gap-2 flex-shrink-0 shadow-sm"
               >
                 Resume Video <ArrowRight size={14} />

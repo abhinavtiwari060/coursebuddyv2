@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { videoService, progressService, watchService } from '../api/api';
+import { videoService, courseService, progressService, watchService } from '../api/api';
 import { 
   ArrowLeft, 
   ChevronLeft, 
@@ -13,34 +13,58 @@ import {
   Clock, 
   FileText, 
   Save, 
-  Sparkles,
   ExternalLink,
-  Trash2
+  Trash2,
+  AlertCircle,
+  Loader2,
+  Check
 } from 'lucide-react';
 import { formatDuration } from '../utils/helpers';
+
+// Helper to reliably extract the 11-character YouTube video ID
+function extractYouTubeId(video) {
+  if (!video) return null;
+  const candidates = [video.youtubeVideoId, video.link];
+  for (const str of candidates) {
+    if (!str || typeof str !== 'string') continue;
+    const s = str.trim();
+    // 1. If starts with temporary frontend prefix yt_
+    if (s.startsWith('yt_')) {
+      const extracted = s.slice(3, 14);
+      if (/^[a-zA-Z0-9_-]{11}$/.test(extracted)) return extracted;
+    }
+    // 2. Exact 11-character YouTube video ID
+    if (/^[a-zA-Z0-9_-]{11}$/.test(s)) {
+      return s;
+    }
+    // 3. YouTube URL formats (watch?v=, youtu.be/, /embed/, /shorts/, /v/)
+    const urlMatch = s.match(/(?:v=|youtu\.be\/|embed\/|shorts\/|\/v\/)([a-zA-Z0-9_-]{11})/);
+    if (urlMatch) return urlMatch[1];
+  }
+  return null;
+}
 
 export default function VideoPlayer() {
   const { courseId, videoId } = useParams();
   const navigate = useNavigate();
 
+  const [course, setCourse] = useState(null);
   const [videos, setVideos] = useState([]);
   const [currentVideo, setCurrentVideo] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(true);
   const [notes, setNotes] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
+  const [savedNotesFeedback, setSavedNotesFeedback] = useState(false);
   const [activeWatchSec, setActiveWatchSec] = useState(0);
 
-  // Playback session state
-  const playerRef = useRef(null);
-  const playerContainerRef = useRef(null);
+  // Playback session ref tracking for background heartbeats
   const sessionIdRef = useRef('sess_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8));
-  const isPlayingRef = useRef(false);
   const timerRef = useRef(null);
   const unsentSecondsRef = useRef(0);
   const currentVideoRef = useRef(null);
 
-  // Sync current video to ref
+  // Sync current video to ref and notes
   useEffect(() => {
     currentVideoRef.current = currentVideo;
     if (currentVideo) {
@@ -48,46 +72,115 @@ export default function VideoPlayer() {
     }
   }, [currentVideo]);
 
-  // Load course videos sorted strictly by numeric sequence
+  // Load course details and its videos from the backend
   useEffect(() => {
     let cancelled = false;
 
-    const loadVideos = async () => {
+    const loadVideoPlayerData = async () => {
       setLoading(true);
       try {
-        const allVideos = await videoService.getAll();
-        const courseVideos = allVideos.filter(
-          (v) =>
-            v.courseId === courseId ||
-            String(v.courseId) === courseId ||
-            v.course === courseId ||
-            v.courseName === courseId
-        );
+        let resolvedCourse = null;
+        let courseVideos = [];
 
-        // Sort strictly by source playlist position / order
+        // 1. Primary: Fetch through courseService.getById(courseId)
+        try {
+          const courseData = await courseService.getById(courseId);
+          if (courseData) {
+            resolvedCourse = courseData;
+            courseVideos = Array.isArray(courseData.videos) ? courseData.videos : [];
+          }
+        } catch (courseErr) {
+          console.warn('[VideoPlayer] Course fetch error, falling back:', courseErr.message);
+        }
+
+        // 2. Fallback: Search all user videos if not populated
+        if (courseVideos.length === 0) {
+          const allVideos = await videoService.getAll().catch(() => []);
+          courseVideos = allVideos.filter(
+            (v) =>
+              String(v.courseId) === String(courseId) ||
+              v.course === courseId ||
+              (resolvedCourse && (v.course === resolvedCourse.name || v.course === String(resolvedCourse._id)))
+          );
+        }
+
+        // 3. Sort strictly by source playlist position / order
         const sorted = [...courseVideos].sort((a, b) => {
           const posA = a.position !== undefined && a.position !== 0 ? a.position : (a.order || 0);
           const posB = b.position !== undefined && b.position !== 0 ? b.position : (b.order || 0);
           return posA - posB;
         });
 
-        if (!cancelled) {
-          setVideos(sorted);
-          const active = sorted.find((v) => v._id === videoId) || sorted[0];
+        if (cancelled) return;
+
+        setCourse(resolvedCourse);
+        setVideos(sorted);
+
+        if (sorted.length > 0) {
+          // Identify active video
+          let active = null;
+          if (videoId) {
+            active = sorted.find((v) => String(v._id) === String(videoId) || v.youtubeVideoId === videoId);
+          }
+
+          if (!active) {
+            // Check last watched from saved progress
+            try {
+              const prog = await progressService.get(resolvedCourse?._id || courseId);
+              if (prog?.lastVideoId) {
+                active = sorted.find((v) => String(v._id) === String(prog.lastVideoId));
+              }
+            } catch { /* ignore */ }
+          }
+
+          // Fallback to first incomplete video, or first video in playlist
+          if (!active) {
+            active = sorted.find((v) => !v.completed) || sorted[0];
+          }
+
           setCurrentVideo(active);
+
+          // Update URL if no videoId was provided in route
+          if (!videoId && active && resolvedCourse) {
+            navigate(`/course/${resolvedCourse._id}/video/${active._id}`, { replace: true });
+          }
+        } else {
+          setCurrentVideo(null);
         }
       } catch (err) {
-        if (!cancelled) console.error('[VideoPlayer] Failed to load videos:', err);
+        if (!cancelled) {
+          console.error('[VideoPlayer] Failed to load course and videos:', err);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
     };
 
-    loadVideos();
+    loadVideoPlayerData();
+
     return () => {
       cancelled = true;
     };
-  }, [courseId, videoId]);
+  }, [courseId]);
+
+  // Sync active video when videoId route param changes and videos are already loaded
+  useEffect(() => {
+    if (videoId && videos.length > 0) {
+      const matched = videos.find((v) => String(v._id) === String(videoId) || v.youtubeVideoId === videoId);
+      if (matched) {
+        if (String(matched._id) !== String(currentVideo?._id)) {
+          setCurrentVideo(matched);
+          setActiveWatchSec(0);
+        }
+      } else {
+        // Safe fallback if videoId in URL was not found in curriculum
+        const fallback = videos.find((v) => !v.completed) || videos[0];
+        if (fallback) {
+          navigate(`/course/${course?._id || courseId}/video/${fallback._id}`, { replace: true });
+        }
+      }
+    }
+  }, [videoId, videos, course?._id, courseId, currentVideo?._id, navigate]);
 
   // Flush accumulated watch time to backend
   const flushWatchHeartbeat = useCallback(async () => {
@@ -96,135 +189,63 @@ export default function VideoPlayer() {
 
     unsentSecondsRef.current = 0;
     try {
-      const player = playerRef.current;
-      const currentPos = player && typeof player.getCurrentTime === 'function' ? player.getCurrentTime() : 0;
-      const dur = player && typeof player.getDuration === 'function' ? player.getDuration() : (currentVideoRef.current.duration || 0);
-
       await watchService.heartbeat({
         sessionId: sessionIdRef.current,
         videoId: currentVideoRef.current._id,
-        courseId,
+        courseId: course?._id || courseId,
         playlistId: currentVideoRef.current.playlistId || '',
-        currentPosition: Math.round(currentPos),
-        durationSeconds: Math.round(dur),
+        currentPosition: Math.round(activeWatchSec),
+        durationSeconds: Math.round(currentVideoRef.current.duration || 0),
         incrementSeconds: inc,
       });
     } catch (err) {
-      console.warn('[WatchTracking] Heartbeat failed:', err.message);
+      console.warn('[WatchTracking] Heartbeat notice:', err.message);
     }
-  }, [courseId]);
+  }, [courseId, course?._id, activeWatchSec]);
 
-  // Handle YouTube IFrame Player API initialization
+  // Active watch timer when player page is visible
   useEffect(() => {
-    if (!currentVideo?.youtubeVideoId) return;
+    if (!currentVideo) return;
 
-    let isDisposed = false;
+    timerRef.current = setInterval(() => {
+      if (!document.hidden) {
+        unsentSecondsRef.current += 1;
+        setActiveWatchSec((prev) => prev + 1);
 
-    const initPlayer = () => {
-      if (isDisposed || !window.YT || !window.YT.Player) return;
-
-      // Destroy existing player if any
-      if (playerRef.current && typeof playerRef.current.destroy === 'function') {
-        try {
-          playerRef.current.destroy();
-        } catch { /* ignore */ }
+        if (unsentSecondsRef.current >= 10) {
+          flushWatchHeartbeat();
+        }
       }
-
-      try {
-        playerRef.current = new window.YT.Player('yt-player-container', {
-          videoId: currentVideo.youtubeVideoId,
-          playerVars: {
-            autoplay: 1,
-            modestbranding: 1,
-            rel: 0,
-          },
-          events: {
-            onStateChange: (event) => {
-              if (isDisposed) return;
-              const state = event.data;
-
-              // YT.PlayerState.PLAYING === 1
-              if (state === 1) {
-                isPlayingRef.current = true;
-                if (!timerRef.current) {
-                  timerRef.current = setInterval(() => {
-                    if (isPlayingRef.current) {
-                      unsentSecondsRef.current += 1;
-                      setActiveWatchSec((prev) => prev + 1);
-
-                      // Send heartbeat every 10 seconds of verified active playback
-                      if (unsentSecondsRef.current >= 10) {
-                        flushWatchHeartbeat();
-                      }
-                    }
-                  }, 1000);
-                }
-              } else {
-                // Paused (2), Buffering (3), Ended (0), or Cued (5)
-                isPlayingRef.current = false;
-                if (timerRef.current) {
-                  clearInterval(timerRef.current);
-                  timerRef.current = null;
-                }
-                flushWatchHeartbeat();
-
-                // Video completed
-                if (state === 0) {
-                  handleComplete();
-                }
-              }
-            },
-          },
-        });
-      } catch (err) {
-        console.error('[YouTubeAPI] Player setup error:', err);
-      }
-    };
-
-    // Load YouTube API script if not loaded
-    if (!window.YT) {
-      const tag = document.createElement('script');
-      tag.src = 'https://www.youtube.com/iframe_api';
-      const firstScriptTag = document.getElementsByTagName('script')[0];
-      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-
-      window.onYouTubeIframeAPIReady = () => {
-        initPlayer();
-      };
-    } else {
-      initPlayer();
-    }
+    }, 1000);
 
     return () => {
-      isDisposed = true;
-      isPlayingRef.current = false;
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
       flushWatchHeartbeat();
-      if (playerRef.current && typeof playerRef.current.destroy === 'function') {
-        try {
-          playerRef.current.destroy();
-        } catch { /* ignore */ }
-      }
     };
-  }, [currentVideo?.youtubeVideoId, flushWatchHeartbeat]);
+  }, [currentVideo?._id, flushWatchHeartbeat]);
 
   const handleComplete = async () => {
     if (!currentVideo) return;
     try {
       await videoService.markComplete(currentVideo._id);
       setVideos((vids) =>
-        vids.map((v) => (v._id === currentVideo._id ? { ...v, completed: true } : v))
+        vids.map((v) => (v._id === currentVideo._id ? { ...v, completed: true, completedAt: new Date().toISOString() } : v))
       );
+      setCurrentVideo((prev) => ({ ...prev, completed: true, completedAt: new Date().toISOString() }));
+
       await progressService.save({
-        courseId,
+        courseId: course?._id || courseId,
         lastVideoId: currentVideo._id,
         watchedVideoId: currentVideo._id,
       });
+
+      await videoService.checkCompletion(currentVideo._id).catch(() => {});
     } catch (err) {
       console.error('[VideoPlayer] Failed to mark complete:', err);
+      alert(err.response?.data?.error || 'Failed to mark video as complete');
     }
   };
 
@@ -233,38 +254,91 @@ export default function VideoPlayer() {
     setSavingNotes(true);
     try {
       await videoService.saveNotes(currentVideo._id, notes);
+      setSavedNotesFeedback(true);
+      setTimeout(() => setSavedNotesFeedback(false), 2500);
     } catch (err) {
       console.error('[VideoPlayer] Failed to save notes:', err);
+      alert('Failed to save study notes.');
     } finally {
       setSavingNotes(false);
     }
   };
 
-  const currentIndex = videos.findIndex((v) => v._id === currentVideo?._id);
+  const currentIndex = videos.findIndex((v) => String(v._id) === String(currentVideo?._id));
   const prevVideo = currentIndex > 0 ? videos[currentIndex - 1] : null;
-  const nextVideo = currentIndex < videos.length - 1 ? videos[currentIndex + 1] : null;
+  const nextVideo = currentIndex >= 0 && currentIndex < videos.length - 1 ? videos[currentIndex + 1] : null;
 
   const completedCount = videos.filter((v) => v.completed).length;
   const progressPercent = videos.length > 0 ? Math.round((completedCount / videos.length) * 100) : 0;
+  const activeYtId = extractYouTubeId(currentVideo);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#FFF7ED] flex items-center justify-center">
-        <div className="w-10 h-10 border-4 border-[#FED7AA] border-t-[#EA580C] rounded-full animate-spin" />
+      <div className="min-h-screen bg-[#FFF7ED] flex flex-col items-center justify-center gap-3">
+        <Loader2 size={36} className="animate-spin text-[#EA580C]" />
+        <p className="text-xs font-bold text-[#78716C]">Loading StudyMate Video Player...</p>
+      </div>
+    );
+  }
+
+  // Helpful empty state when course has zero videos
+  if (!loading && videos.length === 0) {
+    return (
+      <div className="min-h-screen bg-[#FFF7ED] flex flex-col font-sans">
+        <header className="bg-white border-b border-[#FED7AA] px-4 py-3 shadow-sm">
+          <div className="max-w-7xl mx-auto flex items-center gap-3">
+            <Link
+              to={course ? `/course/${course._id}` : '/my-learning'}
+              className="p-2 rounded-xl bg-[#FFF7ED] border border-[#FED7AA] text-[#C2410C] hover:bg-[#FED7AA]/50 transition"
+              title="Return to Course"
+            >
+              <ArrowLeft size={18} />
+            </Link>
+            <h1 className="text-base font-bold text-[#431407]">
+              {course?.name || 'Course Player'}
+            </h1>
+          </div>
+        </header>
+
+        <main className="flex-1 flex items-center justify-center p-6">
+          <div className="clay-card bg-white p-8 max-w-lg w-full text-center rounded-3xl border border-[#FED7AA] shadow-sm">
+            <div className="w-16 h-16 rounded-2xl bg-[#FFF7ED] border border-[#FED7AA] flex items-center justify-center mx-auto mb-4 text-[#EA580C]">
+              <BookOpen size={28} />
+            </div>
+            <h2 className="text-lg font-black text-[#431407]">No Lessons in this Course Yet</h2>
+            <p className="text-xs sm:text-sm text-[#78716C] mt-2 leading-relaxed">
+              This curriculum does not have any video lessons attached yet. You can add YouTube video lessons or import a full playlist from the course details page.
+            </p>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mt-6">
+              <Link
+                to={`/course/${course?._id || courseId}`}
+                className="clay-btn-primary w-full sm:w-auto text-xs px-5 py-2.5 flex items-center justify-center gap-2"
+              >
+                <ArrowLeft size={14} /> Go to Course Curriculum
+              </Link>
+              <Link
+                to="/my-learning"
+                className="clay-btn-secondary w-full sm:w-auto text-xs px-5 py-2.5 flex items-center justify-center gap-2"
+              >
+                My Learning
+              </Link>
+            </div>
+          </div>
+        </main>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-[#FFF7ED] flex flex-col font-sans">
-      {/* Top Bar */}
+      {/* Top Navigation Bar */}
       <header className="sticky top-0 z-20 bg-white border-b border-[#FED7AA] px-4 py-3 shadow-[1px_1px_4px_rgba(154,52,18,0.05)]">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <Link
-              to={`/course/${courseId}`}
+              to={course ? `/course/${course._id}` : `/course/${courseId}`}
               className="p-2 rounded-xl bg-[#FFF7ED] border border-[#FED7AA] text-[#C2410C] hover:bg-[#FED7AA]/50 transition"
-              title="Back to Course"
+              title="Back to Course Details"
             >
               <ArrowLeft size={18} />
             </Link>
@@ -272,22 +346,21 @@ export default function VideoPlayer() {
               <h1 className="text-sm sm:text-base font-bold text-[#431407] truncate">
                 {currentVideo?.title || 'Video Player'}
               </h1>
-              {currentVideo?.course && (
-                <p className="text-[11px] text-[#78716C] flex items-center gap-1">
-                  <BookOpen size={11} className="text-[#EA580C]" /> {currentVideo.course}
-                </p>
-              )}
+              <p className="text-[11px] text-[#78716C] flex items-center gap-1 truncate">
+                <BookOpen size={11} className="text-[#EA580C] flex-shrink-0" />
+                <span className="truncate">{course?.name || currentVideo?.course || 'Curriculum'}</span>
+              </p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Live verified study time tracker badge */}
+            {/* Live session time badge */}
             <div className="hidden md:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FFF7ED] border border-[#FED7AA] text-xs font-bold text-[#EA580C]">
               <Clock size={13} />
               <span>Session: {formatDuration(activeWatchSec)}</span>
             </div>
 
-            {/* Course progress meter */}
+            {/* Course progress indicator */}
             <div className="hidden sm:flex items-center gap-2">
               <div className="text-xs font-bold text-[#78716C]">
                 {completedCount}/{videos.length} Done ({progressPercent}%)
@@ -313,24 +386,40 @@ export default function VideoPlayer() {
 
       {/* Main Layout Area */}
       <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 flex flex-col lg:flex-row gap-6">
-        {/* Left: Video Player & Controls */}
+        {/* Left Column: Video Player & Controls */}
         <div className="flex-1 flex flex-col min-w-0">
-          {/* Video Container */}
-          <div className="w-full aspect-video clay-card overflow-hidden bg-black relative flex items-center justify-center">
-            {currentVideo?.youtubeVideoId ? (
-              <div id="yt-player-container" className="w-full h-full" />
+          {/* Responsive Video Container */}
+          <div className="w-full aspect-video clay-card overflow-hidden bg-black relative flex items-center justify-center rounded-2xl shadow-md border border-[#FED7AA]">
+            {activeYtId ? (
+              <>
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-white/50 pointer-events-none z-0">
+                  <Loader2 size={32} className="animate-spin text-[#EA580C] mb-2" />
+                  <span className="text-xs font-semibold">Loading video player...</span>
+                </div>
+                <iframe
+                  key={activeYtId}
+                  src={`https://www.youtube.com/embed/${activeYtId}?autoplay=1&enablejsapi=1&rel=0&modestbranding=1`}
+                  title={currentVideo?.title || 'YouTube Video Player'}
+                  className="w-full h-full border-0 relative z-10"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                />
+              </>
             ) : (
-              <div className="text-center text-white p-6">
-                <PlayCircle size={48} className="mx-auto text-white/40 mb-2" />
-                <p className="font-bold text-sm">No valid YouTube Video ID</p>
+              <div className="text-center text-white p-6 max-w-md">
+                <AlertCircle size={44} className="mx-auto text-amber-400 mb-3" />
+                <h3 className="font-bold text-sm sm:text-base text-white">Video Source Unavailable</h3>
+                <p className="text-xs text-white/70 mt-1 leading-relaxed">
+                  This lesson does not have a valid YouTube video ID or embedding source.
+                </p>
                 {currentVideo?.link && (
                   <a
                     href={currentVideo.link}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-[#FB923C] hover:underline mt-2"
+                    className="inline-flex items-center gap-1.5 text-xs text-[#FB923C] hover:text-white font-bold bg-white/10 hover:bg-white/20 px-4 py-2 rounded-xl mt-3 transition"
                   >
-                    Open externally <ExternalLink size={12} />
+                    Open Original Link <ExternalLink size={13} />
                   </a>
                 )}
               </div>
@@ -338,24 +427,30 @@ export default function VideoPlayer() {
           </div>
 
           {/* Player Navigation & Status Bar */}
-          <div className="clay-card bg-white p-4 mt-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="clay-card bg-white p-4 mt-4 rounded-2xl border border-[#FED7AA] flex flex-wrap items-center justify-between gap-3 shadow-sm">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
-                  if (prevVideo) navigate(`/course/${courseId}/video/${prevVideo._id}`);
+                  if (prevVideo) {
+                    navigate(`/course/${course?._id || courseId}/video/${prevVideo._id}`);
+                  }
                 }}
                 disabled={!prevVideo}
-                className="clay-btn-secondary text-xs px-3.5 py-2 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
+                className="clay-btn-secondary text-xs px-3.5 py-2 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 font-bold"
+                title={prevVideo ? `Previous: ${prevVideo.title}` : 'No previous video'}
               >
                 <ChevronLeft size={16} /> Previous Video
               </button>
 
               <button
                 onClick={() => {
-                  if (nextVideo) navigate(`/course/${courseId}/video/${nextVideo._id}`);
+                  if (nextVideo) {
+                    navigate(`/course/${course?._id || courseId}/video/${nextVideo._id}`);
+                  }
                 }}
                 disabled={!nextVideo}
-                className="clay-btn-secondary text-xs px-3.5 py-2 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
+                className="clay-btn-secondary text-xs px-3.5 py-2 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 font-bold"
+                title={nextVideo ? `Next: ${nextVideo.title}` : 'No next video'}
               >
                 Next Video <ChevronRight size={16} />
               </button>
@@ -375,6 +470,19 @@ export default function VideoPlayer() {
                 {currentVideo?.completed ? 'Video Completed ✓' : 'Mark as Completed'}
               </button>
 
+              {currentVideo?.link && (
+                <a
+                  href={currentVideo.link}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="clay-btn-secondary text-xs px-3 py-2 flex items-center gap-1 font-bold"
+                  title="Open video on YouTube"
+                >
+                  <ExternalLink size={14} />
+                  <span className="hidden sm:inline">YouTube</span>
+                </a>
+              )}
+
               <button
                 onClick={async () => {
                   if (!currentVideo) return;
@@ -385,9 +493,9 @@ export default function VideoPlayer() {
                     if (remaining.length > 0) {
                       const next = remaining.find((v) => !v.completed) || remaining[0];
                       setVideos(remaining);
-                      navigate(`/course/${courseId}/video/${next._id}`, { replace: true });
+                      navigate(`/course/${course?._id || courseId}/video/${next._id}`, { replace: true });
                     } else {
-                      navigate(`/course/${courseId}`, { replace: true });
+                      navigate(`/course/${course?._id || courseId}`, { replace: true });
                     }
                   } catch (err) {
                     alert(err.response?.data?.error || 'Failed to delete video');
@@ -402,41 +510,48 @@ export default function VideoPlayer() {
           </div>
 
           {/* Study Notes Card */}
-          <div className="clay-card bg-white p-5 mt-4">
+          <div className="clay-card bg-white p-5 mt-4 rounded-2xl border border-[#FED7AA] shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2 text-sm font-bold text-[#431407]">
                 <FileText size={16} className="text-[#EA580C]" />
                 <span>My Study Notes</span>
               </div>
-              <button
-                onClick={handleSaveNotes}
-                disabled={savingNotes}
-                className="clay-btn-secondary text-xs px-3 py-1.5 flex items-center gap-1"
-              >
-                <Save size={13} />
-                {savingNotes ? 'Saving...' : 'Save Notes'}
-              </button>
+              <div className="flex items-center gap-2">
+                {savedNotesFeedback && (
+                  <span className="text-xs font-bold text-green-700 flex items-center gap-1">
+                    <Check size={12} /> Notes saved
+                  </span>
+                )}
+                <button
+                  onClick={handleSaveNotes}
+                  disabled={savingNotes}
+                  className="clay-btn-secondary text-xs px-3 py-1.5 flex items-center gap-1 font-bold"
+                >
+                  <Save size={13} />
+                  {savingNotes ? 'Saving...' : 'Save Notes'}
+                </button>
+              </div>
             </div>
             <textarea
               rows={4}
               placeholder="Record key formulas, timestamps, and study reminders here..."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="clay-input text-xs leading-relaxed"
+              className="w-full text-xs sm:text-sm bg-[#FFF7ED] border border-[#FED7AA] rounded-xl p-3 text-[#431407] placeholder-[#A8A29E] focus:outline-none focus:ring-2 focus:ring-[#EA580C] leading-relaxed transition"
             />
           </div>
         </div>
 
-        {/* Right: Playlist Sequence Sidebar */}
+        {/* Right Column: Playlist Sequence Sidebar */}
         {sidebarOpen && (
-          <aside className="w-full lg:w-80 clay-card bg-white flex flex-col max-h-[720px] overflow-hidden">
+          <aside className="w-full lg:w-80 clay-card bg-white flex flex-col max-h-[720px] rounded-2xl border border-[#FED7AA] overflow-hidden shadow-sm flex-shrink-0">
             <div className="p-4 border-b border-[#FED7AA] bg-[#FFF7ED] flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-[#431407]">
                   Playlist Sequence
                 </h3>
                 <p className="text-[11px] text-[#78716C]">
-                  {videos.length} videos in original order
+                  {videos.length} {videos.length === 1 ? 'lesson' : 'lessons'} in curriculum
                 </p>
               </div>
               <button
@@ -455,17 +570,17 @@ export default function VideoPlayer() {
                 return (
                   <button
                     key={vid._id}
-                    onClick={() => navigate(`/course/${courseId}/video/${vid._id}`)}
+                    onClick={() => navigate(`/course/${course?._id || courseId}/video/${vid._id}`)}
                     className={`w-full text-left p-3 rounded-xl transition flex items-start gap-2.5 ${
                       isActive
                         ? 'bg-[#FFF7ED] border border-[#FED7AA] shadow-sm'
-                        : 'hover:bg-[#FFF7ED]/50'
+                        : 'hover:bg-[#FFF7ED]/50 border border-transparent'
                     }`}
                   >
                     <span
                       className={`w-6 h-6 rounded-lg text-[11px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5 ${
                         isActive
-                          ? 'bg-[#EA580C] text-white'
+                          ? 'bg-[#EA580C] text-white shadow-sm'
                           : 'bg-white border border-[#FED7AA] text-[#78716C]'
                       }`}
                     >
@@ -474,19 +589,21 @@ export default function VideoPlayer() {
 
                     <div className="flex-1 min-w-0">
                       <p
-                        className={`text-xs font-bold line-clamp-2 ${
+                        className={`text-xs font-bold line-clamp-2 leading-tight ${
                           isActive ? 'text-[#EA580C]' : 'text-[#431407]'
                         }`}
                       >
                         {vid.title}
                       </p>
-                      <div className="flex items-center gap-2 mt-1 text-[10px] text-[#78716C]">
+                      <div className="flex items-center gap-2 mt-1.5 text-[10px] text-[#78716C]">
                         {vid.duration > 0 && (
-                          <span>{formatDuration(vid.duration)}</span>
+                          <span className="flex items-center gap-1">
+                            <Clock size={10} /> {formatDuration(vid.duration)}
+                          </span>
                         )}
                         {vid.completed && (
                           <span className="text-green-700 font-bold flex items-center gap-0.5">
-                            <CheckCircle2 size={11} /> Done
+                            <CheckCircle2 size={11} /> Completed
                           </span>
                         )}
                       </div>

@@ -2905,15 +2905,30 @@ app.post('/api/videos/:id/check-completion', authMiddleware, async (req, res) =>
     const video = await Video.findOne({ _id: req.params.id, userId: req.user.id });
     if (!video) return res.status(404).json({ error: 'Video not found' });
 
-    const allVideos = await Video.find({ userId: req.user.id, course: video.course, isPendingDelete: { $ne: true } });
+    let courseDoc = await Course.findOne({ userId: req.user.id, name: video.course, isPendingDelete: { $ne: true } });
+    if (!courseDoc && mongoose.Types.ObjectId.isValid(video.course)) {
+      courseDoc = await Course.findOne({ userId: req.user.id, _id: video.course, isPendingDelete: { $ne: true } });
+    }
+
+    const courseMatchers = [{ course: video.course }];
+    if (courseDoc) {
+      courseMatchers.push({ course: courseDoc.name });
+      courseMatchers.push({ course: String(courseDoc._id) });
+    }
+
+    const allVideos = await Video.find({
+      userId: req.user.id,
+      $or: courseMatchers,
+      isPendingDelete: { $ne: true }
+    });
     const allDone = allVideos.length > 0 && allVideos.every(v => v.completed);
 
-    if (allDone) {
+    if (allDone && courseDoc) {
       await Course.updateOne(
-        { userId: req.user.id, name: video.course },
+        { _id: courseDoc._id },
         { $set: { isCompleted: true, completedAt: new Date() } }
       );
-      return res.json({ courseCompleted: true, courseName: video.course });
+      return res.json({ courseCompleted: true, courseName: courseDoc.name });
     }
     res.json({ courseCompleted: false });
   } catch (err) {
@@ -3250,7 +3265,14 @@ app.post('/api/progress/save', authMiddleware, async (req, res) => {
     // Find the course name to filter videos
     const courseDoc = await Course.findById(courseId);
     if (courseDoc) {
-      const totalVideos = await Video.countDocuments({ userId: req.user.id, course: courseDoc.name });
+      const totalVideos = await Video.countDocuments({
+        userId: req.user.id,
+        $or: [
+          { course: courseDoc.name },
+          { course: String(courseDoc._id) }
+        ],
+        isPendingDelete: { $ne: true }
+      });
       if (totalVideos > 0) {
         progress.progressPercent = Math.round((progress.watchedVideos.length / totalVideos) * 100);
       }

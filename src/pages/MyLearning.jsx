@@ -300,7 +300,7 @@ export default function MyLearning() {
                       className="clay-btn-primary flex-1 text-xs py-2 flex items-center justify-center gap-1.5 text-center font-bold"
                     >
                       <PlayCircle size={14} />
-                      {c.percent > 0 && c.percent < 100 ? 'Resume' : 'Start'}
+                      {c.percent > 0 && c.percent < 100 ? 'Resume Learning' : 'Start Learning'}
                     </Link>
                   ) : (
                     <Link

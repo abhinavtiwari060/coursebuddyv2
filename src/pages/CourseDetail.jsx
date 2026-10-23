@@ -264,7 +264,7 @@ export default function CourseDetail() {
                       className="clay-btn-primary w-full text-xs sm:text-sm py-3 px-5 flex items-center justify-center gap-2 font-bold shadow-md text-center"
                     >
                       <PlayCircle size={18} />
-                      {percent > 0 && percent < 100 ? 'Resume Course' : 'Start Course'}
+                      {percent > 0 && percent < 100 ? 'Resume Learning' : 'Start Learning'}
                     </Link>
                   ) : (
                     <button

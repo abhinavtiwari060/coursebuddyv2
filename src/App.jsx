@@ -118,12 +118,14 @@ export default function App() {
               <Route path="/dashboard" element={<ProtectedRoute><Home /></ProtectedRoute>} />
               <Route path="/my-learning" element={<ProtectedRoute><MyLearning /></ProtectedRoute>} />
               <Route path="/course/:courseId" element={<ProtectedRoute><CourseDetail /></ProtectedRoute>} />
+              <Route path="/course/:courseId/video" element={<ProtectedRoute><VideoPlayer /></ProtectedRoute>} />
+              <Route path="/course/:courseId/video/:videoId" element={<ProtectedRoute><VideoPlayer /></ProtectedRoute>} />
+              <Route path="/course/:courseId/learn" element={<ProtectedRoute><VideoPlayer /></ProtectedRoute>} />
               <Route path="/categories" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
               <Route path="/todos" element={<ProtectedRoute><Todos /></ProtectedRoute>} />
               <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
               <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
               <Route path="/leaderboard" element={<FeatureGate feature="canUseLeaderboard"><Leaderboard /></FeatureGate>} />
-              <Route path="/course/:courseId/video/:videoId" element={<ProtectedRoute><VideoPlayer /></ProtectedRoute>} />
               <Route path="/privacy" element={<PrivacyPolicy />} />
               <Route path="/privacy-policy" element={<PrivacyPolicy />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
